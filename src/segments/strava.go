@@ -3,10 +3,11 @@ package segments
 import (
 	"fmt"
 	"math"
-	"oh-my-posh/environment"
-	"oh-my-posh/http"
-	"oh-my-posh/properties"
 	"time"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/http"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 // StravaAPI is a wrapper around http.Oauth
@@ -15,12 +16,12 @@ type StravaAPI interface {
 }
 
 type stravaAPI struct {
-	http.OAuth
+	http.OAuthRequest
 }
 
 func (s *stravaAPI) GetActivities() ([]*StravaData, error) {
 	url := "https://www.strava.com/api/v3/athlete/activities?page=1&per_page=1"
-	return http.OauthResult[[]*StravaData](&s.OAuth, url, nil)
+	return http.OauthResult[[]*StravaData](&s.OAuthRequest, url, nil)
 }
 
 // segment struct, makes templating easier
@@ -110,9 +111,9 @@ func (s *Strava) getActivityIcon() string {
 	case "VirtualRide":
 		fallthrough
 	case "Ride":
-		return s.props.GetString(RideIcon, "\uf5a2")
+		return s.props.GetString(RideIcon, "\uf206")
 	case "Run":
-		return s.props.GetString(RunIcon, "\ufc0c")
+		return s.props.GetString(RunIcon, "\ue213")
 	case "NordicSki":
 	case "AlpineSki":
 	case "BackcountrySki":
@@ -125,16 +126,17 @@ func (s *Strava) getActivityIcon() string {
 	return s.props.GetString(UnknownActivityIcon, "\ue213")
 }
 
-func (s *Strava) Init(props properties.Properties, env environment.Environment) {
+func (s *Strava) Init(props properties.Properties, env platform.Environment) {
 	s.props = props
 
+	oauth := &http.OAuthRequest{
+		AccessTokenKey:  StravaAccessTokenKey,
+		RefreshTokenKey: StravaRefreshTokenKey,
+		SegmentName:     "strava",
+	}
+	oauth.Init(env, props)
+
 	s.api = &stravaAPI{
-		OAuth: http.OAuth{
-			Props:           props,
-			Env:             env,
-			AccessTokenKey:  StravaAccessTokenKey,
-			RefreshTokenKey: StravaRefreshTokenKey,
-			SegmentName:     "strava",
-		},
+		OAuthRequest: *oauth,
 	}
 }

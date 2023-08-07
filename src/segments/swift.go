@@ -1,8 +1,8 @@
 package segments
 
 import (
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Swift struct {
@@ -13,7 +13,7 @@ func (s *Swift) Template() string {
 	return languageTemplate
 }
 
-func (s *Swift) Init(props properties.Properties, env environment.Environment) {
+func (s *Swift) Init(props properties.Properties, env platform.Environment) {
 	s.language = language{
 		env:        env,
 		props:      props,

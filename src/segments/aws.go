@@ -2,14 +2,15 @@ package segments
 
 import (
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
 	"strings"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Aws struct {
 	props properties.Properties
-	env   environment.Environment
+	env   platform.Environment
 
 	Profile string
 	Region  string
@@ -23,7 +24,7 @@ func (a *Aws) Template() string {
 	return " {{ .Profile }}{{ if .Region }}@{{ .Region }}{{ end }} "
 }
 
-func (a *Aws) Init(props properties.Properties, env environment.Environment) {
+func (a *Aws) Init(props properties.Properties, env platform.Environment) {
 	a.props = props
 	a.env = env
 }
@@ -39,7 +40,7 @@ func (a *Aws) Enabled() bool {
 		return ""
 	}
 	displayDefaultUser := a.props.GetBool(properties.DisplayDefault, true)
-	a.Profile = getEnvFirstMatch("AWS_VAULT", "AWS_PROFILE")
+	a.Profile = getEnvFirstMatch("AWS_VAULT", "AWS_DEFAULT_PROFILE", "AWS_PROFILE")
 	if !displayDefaultUser && a.Profile == defaultUser {
 		return false
 	}

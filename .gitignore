@@ -1,3 +1,6 @@
+# Others
+
+.fleet/
 
 # Created by https://www.toptal.com/developers/gitignore/api/node,go,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=node,go,visualstudiocode
@@ -9,6 +12,9 @@
 *.dll
 *.so
 *.dylib
+
+# Windows asset files
+/src/rsrc_windows_*.syso
 
 # Test binary, built with `go test -c`
 *.test

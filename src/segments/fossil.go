@@ -34,16 +34,15 @@ type Fossil struct {
 }
 
 func (f *Fossil) Template() string {
-	return " \ufb2b {{.Branch}} {{.Status.String}} "
+	return " \ue725 {{.Branch}} {{.Status.String}} "
 }
 
 func (f *Fossil) Enabled() bool {
-	command := f.getCommand(FOSSILCOMMAND)
-	if !f.env.HasCommand(command) {
+	if !f.hasCommand(FOSSILCOMMAND) {
 		return false
 	}
 	// run fossil command
-	output, err := f.env.RunCommand(command, "status")
+	output, err := f.env.RunCommand(f.command, "status")
 	if err != nil {
 		return false
 	}

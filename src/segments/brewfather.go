@@ -7,16 +7,17 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
 	"sort"
 	"time"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 // segment struct, makes templating easier
 type Brewfather struct {
 	props properties.Properties
-	env   environment.Environment
+	env   platform.Environment
 
 	Batch
 	TemperatureTrendIcon string
@@ -28,7 +29,7 @@ type Brewfather struct {
 	DaysBottled            uint
 	DaysBottledOrFermented *uint // help avoid chronic template logic - code will point this to one of above or be nil depending on status
 
-	URL string // URL of batch page to open if hyperlink enabled on the segment and URL formatting used in template: [name](link)
+	URL string // URL of batch page to open if hyperlink enabled on the segment and URL formatting used in template: «text»(link)
 }
 
 const (
@@ -52,8 +53,6 @@ const (
 	BFArchivedStatusIcon     properties.Property = "archived_status_icon"
 
 	BFDayIcon properties.Property = "day_icon"
-
-	BFCacheTimeout properties.Property = "cache_timeout"
 
 	BFStatusPlanning     string = "Planning"
 	BFStatusBrewing      string = "Brewing"
@@ -97,7 +96,7 @@ type Batch struct {
 }
 
 func (bf *Brewfather) Template() string {
-	return " {{ .StatusIcon }} {{ if .DaysBottledOrFermented }}{{ .DaysBottledOrFermented }}{{ .DayIcon }} {{ end }}{{ url .Recipe.Name .URL }} {{ printf \"%.1f\" .MeasuredAbv }}%{{ if and (.Reading) (eq .Status \"Fermenting\") }} {{ printf \"%.3f\" .Reading.Gravity }} {{ .Reading.Temperature }}\u00b0 {{ .TemperatureTrendIcon }}{{ end }} " // nolint:lll
+	return " {{ .StatusIcon }} {{ if .DaysBottledOrFermented }}{{ .DaysBottledOrFermented }}{{ .DayIcon }} {{ end }}{{ url .Recipe.Name .URL }} {{ printf \"%.1f\" .MeasuredAbv }}%{{ if and (.Reading) (eq .Status \"Fermenting\") }} {{ printf \"%.3f\" .Reading.Gravity }} {{ .Reading.Temperature }}\u00b0 {{ .TemperatureTrendIcon }}{{ end }} " //nolint:lll
 }
 
 func (bf *Brewfather) Enabled() bool {
@@ -246,7 +245,7 @@ func (bf *Brewfather) getResult() (*Batch, error) {
 	batchReadingsURL := fmt.Sprintf("https://api.brewfather.app/v1/batches/%s/readings", batchID)
 
 	httpTimeout := bf.props.GetInt(properties.HTTPTimeout, properties.DefaultHTTPTimeout)
-	cacheTimeout := bf.props.GetInt(BFCacheTimeout, 5)
+	cacheTimeout := bf.props.GetInt(properties.CacheTimeout, 5)
 
 	if cacheTimeout > 0 {
 		if data, err := getFromCache(batchURL); err == nil {
@@ -322,7 +321,7 @@ func (bf *Brewfather) SGToPlato(sg float64) float64 {
 	return math.Round(100*((135.997*sg*sg*sg)-(630.272*sg*sg)+(1111.14*sg)-616.868)) / 100 // 2 decimal places
 }
 
-func (bf *Brewfather) Init(props properties.Properties, env environment.Environment) {
+func (bf *Brewfather) Init(props properties.Properties, env platform.Environment) {
 	bf.props = props
 	bf.env = env
 }

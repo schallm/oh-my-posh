@@ -2,11 +2,12 @@ package cli
 
 import (
 	"fmt"
-	"oh-my-posh/environment"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
 
 	"github.com/spf13/cobra"
 )
@@ -33,8 +34,8 @@ You can do the following:
 			_ = cmd.Help()
 			return
 		}
-		env := &environment.ShellEnvironment{
-			Version: cliVersion,
+		env := &platform.Shell{
+			CmdFlags: &platform.Flags{},
 		}
 		env.Init()
 		defer env.Close()
@@ -42,7 +43,7 @@ You can do the following:
 		case "path":
 			fmt.Print(env.CachePath())
 		case "clear":
-			cacheFilePath := filepath.Join(env.CachePath(), environment.CacheFile)
+			cacheFilePath := filepath.Join(env.CachePath(), platform.CacheFile)
 			err := os.Remove(cacheFilePath)
 			if err != nil {
 				fmt.Println(err.Error())
@@ -50,14 +51,14 @@ You can do the following:
 			}
 			fmt.Printf("removed cache file at %s\n", cacheFilePath)
 		case "edit":
-			cacheFilePath := filepath.Join(env.CachePath(), environment.CacheFile)
+			cacheFilePath := filepath.Join(env.CachePath(), platform.CacheFile)
 			editFileWithEditor(cacheFilePath)
 		}
 	},
 }
 
-func init() { // nolint:gochecknoinits
-	rootCmd.AddCommand(getCache)
+func init() { //nolint:gochecknoinits
+	RootCmd.AddCommand(getCache)
 }
 
 func editFileWithEditor(file string) {

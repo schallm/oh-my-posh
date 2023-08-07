@@ -1,18 +1,20 @@
 package segments
 
 import (
-	"oh-my-posh/environment"
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
-	"oh-my-posh/template"
 	"strings"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/shell"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 
 	"github.com/stretchr/testify/assert"
 	mock2 "github.com/stretchr/testify/mock"
 )
 
-func renderTemplate(env *mock.MockedEnvironment, segmentTemplate string, context interface{}) string {
+func renderTemplateNoTrimSpace(env *mock.MockedEnvironment, segmentTemplate string, context interface{}) string {
 	found := false
 	for _, call := range env.Mock.ExpectedCalls {
 		if call.Method == "TemplateCache" {
@@ -21,11 +23,12 @@ func renderTemplate(env *mock.MockedEnvironment, segmentTemplate string, context
 		}
 	}
 	if !found {
-		env.On("TemplateCache").Return(&environment.TemplateCache{
+		env.On("TemplateCache").Return(&platform.TemplateCache{
 			Env: make(map[string]string),
 		})
 	}
-	env.On("Log", mock2.Anything, mock2.Anything, mock2.Anything)
+	env.On("Error", mock2.Anything)
+	env.On("Debug", mock2.Anything)
 	tmpl := &template.Text{
 		Template: segmentTemplate,
 		Context:  context,
@@ -35,133 +38,125 @@ func renderTemplate(env *mock.MockedEnvironment, segmentTemplate string, context
 	if err != nil {
 		return err.Error()
 	}
-	return strings.TrimSpace(text)
+	return text
+}
+
+func renderTemplate(env *mock.MockedEnvironment, segmentTemplate string, context interface{}) string {
+	return strings.TrimSpace(renderTemplateNoTrimSpace(env, segmentTemplate, context))
 }
 
 const (
-	homeBill        = "/home/bill"
-	homeJan         = "/usr/home/jan"
-	homeBillWindows = "C:\\Users\\Bill"
-	levelDir        = "/level"
+	homeDir        = "/home/someone"
+	homeDirWindows = "C:\\Users\\someone"
 )
 
-func TestIsInHomeDirTrue(t *testing.T) {
-	home := homeBill
-	env := new(mock.MockedEnvironment)
-	env.On("Home").Return(home)
-	path := &Path{
-		env: env,
-	}
-	got := path.inHomeDir(home)
-	assert.True(t, got)
-}
-
-func TestIsInHomeDirLevelTrue(t *testing.T) {
-	home := homeBill
-	pwd := home
-	for i := 0; i < 99; i++ {
-		pwd += levelDir
-	}
-	env := new(mock.MockedEnvironment)
-	env.On("Home").Return(home)
-	path := &Path{
-		env: env,
-	}
-	got := path.inHomeDir(pwd)
-	assert.True(t, got)
-}
-
-func TestRootLocationHome(t *testing.T) {
+func TestParent(t *testing.T) {
 	cases := []struct {
-		Expected      string
-		HomePath      string
-		Pswd          string
-		Pwd           string
-		PathSeparator string
-		HomeIcon      string
-		RegistryIcon  string
+		Case                string
+		Expected            string
+		HomePath            string
+		Pwd                 string
+		GOOS                string
+		PathSeparator       string
+		FolderSeparatorIcon string
 	}{
-		{Expected: "~", HomeIcon: "~", HomePath: "/home/bill/", Pwd: "/home/bill/", PathSeparator: "/"},
-		{Expected: "usr", HomePath: "/home/bill/", Pwd: "/usr/error/what", PathSeparator: "/"},
-		{Expected: "C:", HomePath: "C:\\Users\\Bill", Pwd: "C:\\Program Files\\Go", PathSeparator: "\\"},
-		{Expected: "REG", RegistryIcon: "REG", HomePath: "C:\\Users\\Bill", Pwd: "HKCU:\\Program Files\\Go", PathSeparator: "\\"},
-		{Expected: "~", HomeIcon: "~", HomePath: "C:\\Users\\Bill", Pwd: "Microsoft.PowerShell.Core\\FileSystem::C:\\Users\\Bill", PathSeparator: "\\"},
-		{Expected: "C:", HomePath: "C:\\Users\\Jack", Pwd: "Microsoft.PowerShell.Core\\FileSystem::C:\\Users\\Bill", PathSeparator: "\\"},
-		{Expected: "", HomePath: "C:\\Users\\Jack", Pwd: "", PathSeparator: "\\"},
-		{Expected: "DRIVE:", HomePath: "/home/bill/", Pwd: "/usr/error/what", Pswd: "DRIVE:", PathSeparator: "/"},
+		{
+			Case:          "Inside Home folder",
+			Expected:      "~/",
+			HomePath:      homeDir,
+			Pwd:           homeDir + "/test",
+			GOOS:          platform.DARWIN,
+			PathSeparator: "/",
+		},
+		{
+			Case:          "Home folder",
+			HomePath:      homeDir,
+			Pwd:           homeDir,
+			GOOS:          platform.DARWIN,
+			PathSeparator: "/",
+		},
+		{
+			Case:          "Home folder with a trailing separator",
+			HomePath:      homeDir,
+			Pwd:           homeDir + "/",
+			GOOS:          platform.DARWIN,
+			PathSeparator: "/",
+		},
+		{
+			Case:          "Root",
+			HomePath:      homeDir,
+			Pwd:           "/",
+			GOOS:          platform.DARWIN,
+			PathSeparator: "/",
+		},
+		{
+			Case:          "Root + 1",
+			Expected:      "/",
+			HomePath:      homeDir,
+			Pwd:           "/usr",
+			GOOS:          platform.DARWIN,
+			PathSeparator: "/",
+		},
+		{
+			Case:          "Windows Home folder",
+			HomePath:      homeDirWindows,
+			Pwd:           homeDirWindows,
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows drive root",
+			HomePath:      homeDirWindows,
+			Pwd:           "C:",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows drive root with a trailing separator",
+			HomePath:      homeDirWindows,
+			Pwd:           "C:\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows drive root + 1",
+			Expected:      "C:\\",
+			HomePath:      homeDirWindows,
+			Pwd:           "C:\\test",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "PSDrive root",
+			HomePath:      homeDirWindows,
+			Pwd:           "HKLM:",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
 	}
 	for _, tc := range cases {
 		env := new(mock.MockedEnvironment)
 		env.On("Home").Return(tc.HomePath)
 		env.On("Pwd").Return(tc.Pwd)
-		args := &environment.Flags{
-			PSWD: tc.Pswd,
-		}
-		env.On("Flags").Return(args)
+		env.On("Flags").Return(&platform.Flags{})
+		env.On("Shell").Return(shell.GENERIC)
 		env.On("PathSeparator").Return(tc.PathSeparator)
-		env.On("GOOS").Return("")
+		env.On("GOOS").Return(tc.GOOS)
 		path := &Path{
 			env: env,
 			props: properties.Map{
-				HomeIcon:            tc.HomeIcon,
-				WindowsRegistryIcon: tc.RegistryIcon,
+				FolderSeparatorIcon: tc.FolderSeparatorIcon,
 			},
 		}
-		got := path.rootLocation()
-		assert.EqualValues(t, tc.Expected, got)
+		path.setPaths()
+		got := path.Parent()
+		assert.EqualValues(t, tc.Expected, got, tc.Case)
 	}
-}
-
-func TestIsInHomeDirFalse(t *testing.T) {
-	home := homeBill
-	env := new(mock.MockedEnvironment)
-	env.On("Home").Return(home)
-	path := &Path{
-		env: env,
-	}
-	got := path.inHomeDir("/usr/error")
-	assert.False(t, got)
-}
-
-func TestPathDepthMultipleLevelsDeep(t *testing.T) {
-	pwd := "/usr"
-	for i := 0; i < 99; i++ {
-		pwd += levelDir
-	}
-	env := new(mock.MockedEnvironment)
-	env.On("PathSeparator").Return("/")
-	env.On("getRunteGOOS").Return("")
-	path := &Path{
-		env: env,
-	}
-	got := path.pathDepth(pwd)
-	assert.Equal(t, 99, got)
-}
-
-func TestPathDepthZeroLevelsDeep(t *testing.T) {
-	pwd := "/usr/"
-	env := new(mock.MockedEnvironment)
-	env.On("PathSeparator").Return("/")
-	path := &Path{
-		env: env,
-	}
-	got := path.pathDepth(pwd)
-	assert.Equal(t, 0, got)
-}
-
-func TestPathDepthOneLevelDeep(t *testing.T) {
-	pwd := "/usr/location"
-	env := new(mock.MockedEnvironment)
-	env.On("PathSeparator").Return("/")
-	path := &Path{
-		env: env,
-	}
-	got := path.pathDepth(pwd)
-	assert.Equal(t, 1, got)
 }
 
 func TestAgnosterPathStyles(t *testing.T) {
 	cases := []struct {
+		Style               string
 		Expected            string
 		HomePath            string
 		Pswd                string
@@ -169,29 +164,500 @@ func TestAgnosterPathStyles(t *testing.T) {
 		PathSeparator       string
 		HomeIcon            string
 		FolderSeparatorIcon string
-		Style               string
 		GOOS                string
 		MaxDepth            int
+		MaxWidth            int
 		HideRootLocation    bool
 	}{
-		{Style: AgnosterFull, Expected: "usr > location > whatever", HomePath: "/usr/home", Pwd: "/usr/location/whatever", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: AgnosterShort, Expected: "usr > .. > man", HomePath: "/usr/home", Pwd: "/usr/location/whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: AgnosterShort, Expected: "~ > .. > man", HomePath: "/usr/home", Pwd: "/usr/home/whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: AgnosterShort, Expected: "~ > projects", HomePath: "/usr/home", Pwd: "/usr/home/projects", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: AgnosterShort, Expected: "C:", HomePath: homeBillWindows, Pwd: "C:", PathSeparator: "\\", FolderSeparatorIcon: " > "},
-		{Style: AgnosterShort, Expected: "/", HomePath: homeBillWindows, Pwd: "/", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: AgnosterShort, Expected: "foo", HomePath: homeBillWindows, Pwd: "/foo", PathSeparator: "/", FolderSeparatorIcon: " > "},
+		{
+			Style:               Unique,
+			Expected:            "~ > a > ab > abcd",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/ab/abc/abcd",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Unique,
+			Expected:            "~ > a > .a > abcd",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/ab/.abc/abcd",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Unique,
+			Expected:            "~ > a > ab > abcd",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/ab/ab/abcd",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Unique,
+			Expected:            "C > a > ab > abcd",
+			HomePath:            homeDirWindows,
+			Pwd:                 "C:\\ab\\ab\\abcd",
+			GOOS:                platform.WINDOWS,
+			PathSeparator:       "\\",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Unique,
+			Expected:            "a",
+			HomePath:            homeDir,
+			Pwd:                 "/ab",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
 
-		{Style: AgnosterShort, Expected: "usr > .. > bar > man", HomePath: "/usr/home", Pwd: "/usr/foo/bar/man", PathSeparator: "/", FolderSeparatorIcon: " > ", MaxDepth: 2},
-		{Style: AgnosterShort, Expected: "usr > foo > bar > man", HomePath: "/usr/home", Pwd: "/usr/foo/bar/man", PathSeparator: "/", FolderSeparatorIcon: " > ", MaxDepth: 3},
-		{Style: AgnosterShort, Expected: "~ > .. > bar > man", HomePath: "/usr/home", Pwd: "/usr/home/foo/bar/man", PathSeparator: "/", FolderSeparatorIcon: " > ", MaxDepth: 2},
-		{Style: AgnosterShort, Expected: "~ > foo > bar > man", HomePath: "/usr/home", Pwd: "/usr/home/foo/bar/man", PathSeparator: "/", FolderSeparatorIcon: " > ", MaxDepth: 3},
+		{
+			Style:               Powerlevel,
+			Expected:            "t > w > o > a > v > l > p > wh > we > i > wa > th > the > d > f > u > it > c > to > a > co > stream",
+			HomePath:            homeDir,
+			Pwd:                 "/there/was/once/a/very/long/path/which/wended/its/way/through/the/dark/forest/until/it/came/to/a/cold/stream",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+			MaxWidth:            20,
+		},
+		{
+			Style:               Powerlevel,
+			Expected:            "t > w > o > a > v > l > p > which > wended > its > way > through > the",
+			HomePath:            homeDir,
+			Pwd:                 "/there/was/once/a/very/long/path/which/wended/its/way/through/the",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+			MaxWidth:            70,
+		},
+		{
+			Style:               Powerlevel,
+			Expected:            "var/cache/pacman",
+			HomePath:            homeDir,
+			Pwd:                 "/var/cache/pacman",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: "/",
+			MaxWidth:            50,
+		},
+
+		{
+			Style:               Letter,
+			Expected:            "~",
+			HomePath:            homeDir,
+			Pwd:                 homeDir,
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "~ > a > w > man",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/ab/whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "u > b > a > w > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/burp/ab/whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "u > .b > a > w > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/.burp/ab/whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "u > .b > a > .w > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/.burp/ab/.whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "u > .b > a > ._w > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/.burp/ab/._whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "u > .ä > ū > .w > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/.äufbau/ūmgebung/.whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "u > .b > 1 > .w > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/.burp/12345/.whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "u > .b > 1 > .w > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/.burp/12345abc/.whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "u > .b > __p > .w > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/.burp/__pycache__/.whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "➼ > .w > man",
+			HomePath:            homeDir,
+			Pwd:                 "/➼/.whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "➼ s > .w > man",
+			HomePath:            homeDir,
+			Pwd:                 "/➼ something/.whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "C: > ",
+			HomePath:            homeDirWindows,
+			Pwd:                 "C:\\",
+			GOOS:                platform.WINDOWS,
+			PathSeparator:       "\\",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "C > s > .w > man",
+			HomePath:            homeDirWindows,
+			Pwd:                 "C:\\something\\.whatever\\man",
+			GOOS:                platform.WINDOWS,
+			PathSeparator:       "\\",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "~ > s > man",
+			HomePath:            homeDirWindows,
+			Pwd:                 homeDirWindows + "\\something\\man",
+			GOOS:                platform.WINDOWS,
+			PathSeparator:       "\\",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Letter,
+			Expected:            "w",
+			HomePath:            homeDir,
+			Pwd:                 "/whatever",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+
+		{
+			Style:               Mixed,
+			Expected:            "~ > .. > man",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Mixed,
+			Expected:            "~ > ab > .. > man",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/ab/whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Mixed,
+			Expected:            "usr > foo > bar > .. > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/foo/bar/foobar/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Mixed,
+			Expected:            "whatever > .. > foo > bar",
+			HomePath:            homeDir,
+			Pwd:                 "/whatever/foobar/foo/bar",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               Mixed,
+			Expected:            "C: > .. > foo > .. > man",
+			HomePath:            homeDirWindows,
+			Pwd:                 "C:\\Users\\foo\\foobar\\man",
+			GOOS:                platform.WINDOWS,
+			PathSeparator:       "\\",
+			FolderSeparatorIcon: " > ",
+		},
+
+		{
+			Style:               AgnosterFull,
+			Expected:            "usr > location > whatever",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/location/whatever",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               AgnosterFull,
+			Expected:            "PSDRIVE:/ | src",
+			HomePath:            homeDir,
+			Pwd:                 "/foo",
+			Pswd:                "PSDRIVE:/src",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " | ",
+		},
 
 		{
 			Style:               AgnosterShort,
+			Expected:            ".. | src | init",
+			HomePath:            homeDir,
+			Pwd:                 "/foo",
+			Pswd:                "PSDRIVE:/src/init",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " | ",
+			MaxDepth:            2,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            "usr > foo > bar > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/foo/bar/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            3,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            ".. | src",
+			HomePath:            homeDir,
+			Pwd:                 "/foo",
+			Pswd:                "PSDRIVE:/src",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " | ",
+			MaxDepth:            2,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            "~ > projects",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/projects",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            "\\\\localhost\\c$ > some",
+			HomePath:            homeDirWindows,
+			Pwd:                 "\\\\localhost\\c$\\some",
+			GOOS:                platform.WINDOWS,
+			PathSeparator:       "\\",
+			FolderSeparatorIcon: " > ",
+		},
+
+		{
+			Style:               AgnosterShort,
+			Expected:            "~",
+			HomePath:            homeDir,
+			Pwd:                 homeDir,
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            1,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            "\\\\localhost\\c$",
+			HomePath:            homeDirWindows,
+			Pwd:                 "\\\\localhost\\c$",
+			GOOS:                platform.WINDOWS,
+			PathSeparator:       "\\",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            "usr > .. > bar > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/foo/bar/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            2,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            "~ > .. > man",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            "usr > .. > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/location/whatever/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            ".. > bar > man",
+			HomePath:            homeDirWindows,
+			Pwd:                 homeDirWindows + "\\foo\\bar\\man",
+			GOOS:                platform.WINDOWS,
+			PathSeparator:       "\\",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            2,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            "~ > .. > bar > man",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/foo/bar/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            2,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            "~ > foo > bar > man",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/foo/bar/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            3,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            "PSDRIVE:/ | .. | init",
+			HomePath:            homeDir,
+			Pwd:                 "/foo",
+			Pswd:                "PSDRIVE:/src/init",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " | ",
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            ".. > foo",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/foo",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            1,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            ".. > bar > man",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/bar/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            2,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            ".. > foo > bar > man",
+			HomePath:            homeDir,
+			Pwd:                 "/usr/foo/bar/man",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            3,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            ".. > foo",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/foo",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            2,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            ".. > foo > bar",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/foo/bar",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            3,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            "C: | ",
+			HomePath:            homeDir,
+			Pwd:                 "/mnt/c",
+			Pswd:                "C:",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " | ",
+			MaxDepth:            2,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            ".. | space foo",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/space foo",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " | ",
+			MaxDepth:            2,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            ".. | space foo",
+			HomePath:            homeDir,
+			Pwd:                 homeDir + "/space foo",
+			PathSeparator:       "/",
+			FolderSeparatorIcon: " | ",
+			MaxDepth:            1,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            "C: > ",
+			HomePath:            homeDirWindows,
+			Pwd:                 "C:",
+			GOOS:                platform.WINDOWS,
+			PathSeparator:       "\\",
+			FolderSeparatorIcon: " > ",
+		},
+		{
+			Style:               AgnosterShort,
 			Expected:            "C: > .. > bar > man",
-			HomePath:            homeBillWindows,
+			HomePath:            homeDirWindows,
 			Pwd:                 "C:\\usr\\foo\\bar\\man",
+			GOOS:                platform.WINDOWS,
 			PathSeparator:       "\\",
 			FolderSeparatorIcon: " > ",
 			MaxDepth:            2,
@@ -199,8 +665,9 @@ func TestAgnosterPathStyles(t *testing.T) {
 		{
 			Style:               AgnosterShort,
 			Expected:            "C: > .. > foo > bar > man",
-			HomePath:            homeBillWindows,
+			HomePath:            homeDirWindows,
 			Pwd:                 "C:\\usr\\foo\\bar\\man",
+			GOOS:                platform.WINDOWS,
 			PathSeparator:       "\\",
 			FolderSeparatorIcon: " > ",
 			MaxDepth:            3,
@@ -208,8 +675,9 @@ func TestAgnosterPathStyles(t *testing.T) {
 		{
 			Style:               AgnosterShort,
 			Expected:            "~ > .. > bar > man",
-			HomePath:            homeBillWindows,
-			Pwd:                 "C:\\Users\\Bill\\foo\\bar\\man",
+			HomePath:            homeDirWindows,
+			Pwd:                 homeDirWindows + "\\foo\\bar\\man",
+			GOOS:                platform.WINDOWS,
 			PathSeparator:       "\\",
 			FolderSeparatorIcon: " > ",
 			MaxDepth:            2,
@@ -217,61 +685,46 @@ func TestAgnosterPathStyles(t *testing.T) {
 		{
 			Style:               AgnosterShort,
 			Expected:            "~ > foo > bar > man",
-			HomePath:            homeBillWindows,
-			Pwd:                 "C:\\Users\\Bill\\foo\\bar\\man",
+			HomePath:            homeDirWindows,
+			Pwd:                 homeDirWindows + "\\foo\\bar\\man",
+			GOOS:                platform.WINDOWS,
 			PathSeparator:       "\\",
 			FolderSeparatorIcon: " > ",
 			MaxDepth:            3,
 		},
-
-		{Style: AgnosterFull, Expected: "PSDRIVE: | src", HomePath: homeBillWindows, Pwd: "/foo", Pswd: "PSDRIVE:/src", PathSeparator: "/", FolderSeparatorIcon: " | "},
-		{Style: AgnosterShort, Expected: "PSDRIVE: | .. | init", HomePath: homeBillWindows, Pwd: "/foo", Pswd: "PSDRIVE:/src/init", PathSeparator: "/", FolderSeparatorIcon: " | "},
-
-		{Style: AgnosterShort, Expected: "src | init", HomePath: homeBillWindows, Pwd: "/foo", Pswd: "PSDRIVE:/src/init", PathSeparator: "/", FolderSeparatorIcon: " | ", MaxDepth: 2,
-			HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "PSDRIVE: | src", HomePath: homeBillWindows, Pwd: "/foo", Pswd: "PSDRIVE:/src", PathSeparator: "/", FolderSeparatorIcon: " | ", MaxDepth: 2,
-			HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "~", HomePath: homeBillWindows, Pwd: homeBillWindows, PathSeparator: "\\", FolderSeparatorIcon: " > ", MaxDepth: 1, HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "foo", HomePath: homeBillWindows, Pwd: homeBillWindows + "\\foo", PathSeparator: "\\", FolderSeparatorIcon: "\\", MaxDepth: 1,
-			HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "~\\foo", HomePath: homeBillWindows, Pwd: homeBillWindows + "\\foo", PathSeparator: "\\", FolderSeparatorIcon: "\\", MaxDepth: 2,
-			HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "~", HomePath: "/usr/home", Pwd: "/usr/home", PathSeparator: "/", FolderSeparatorIcon: " > ", MaxDepth: 1, HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "foo", HomePath: "/usr/home", Pwd: "/usr/home/foo", PathSeparator: "/", FolderSeparatorIcon: "/", MaxDepth: 1, HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "bar > man", HomePath: "/usr/home", Pwd: "/usr/foo/bar/man", PathSeparator: "/", FolderSeparatorIcon: " > ", MaxDepth: 2,
-			HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "foo > bar > man", HomePath: "/usr/home", Pwd: "/usr/foo/bar/man", PathSeparator: "/", FolderSeparatorIcon: " > ", MaxDepth: 3,
-			HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "~ > foo", HomePath: "/usr/home", Pwd: "/usr/home/foo", PathSeparator: "/", FolderSeparatorIcon: " > ", MaxDepth: 2, HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "~ > foo > bar > man", HomePath: "/usr/home", Pwd: "/usr/home/foo/bar/man", PathSeparator: "/", FolderSeparatorIcon: " > ", MaxDepth: 4,
-			HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "C:", HomePath: "/usr/home", Pwd: "/mnt/c", Pswd: "C:", PathSeparator: "/", FolderSeparatorIcon: " | ", MaxDepth: 2, HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "~ | space foo", HomePath: "/usr/home", Pwd: "/usr/home/space foo", PathSeparator: "/", FolderSeparatorIcon: " | ", MaxDepth: 2,
-			HideRootLocation: true},
-		{Style: AgnosterShort, Expected: "space foo", HomePath: "/usr/home", Pwd: "/usr/home/space foo", PathSeparator: "/", FolderSeparatorIcon: " | ", MaxDepth: 1,
-			HideRootLocation: true},
-
-		{Style: Mixed, Expected: "~ > .. > man", HomePath: "/usr/home", Pwd: "/usr/home/whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Mixed, Expected: "~ > ab > .. > man", HomePath: "/usr/home", Pwd: "/usr/home/ab/whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-
-		{Style: Letter, Expected: "~ > a > w > man", HomePath: "/usr/home", Pwd: "/usr/home/ab/whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Letter, Expected: "u > b > a > w > man", HomePath: "/usr/home", Pwd: "/usr/burp/ab/whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Letter, Expected: "u > .b > a > w > man", HomePath: "/usr/home", Pwd: "/usr/.burp/ab/whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Letter, Expected: "u > .b > a > .w > man", HomePath: "/usr/home", Pwd: "/usr/.burp/ab/.whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Letter, Expected: "u > .b > a > ._w > man", HomePath: "/usr/home", Pwd: "/usr/.burp/ab/._whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Letter, Expected: "u > .ä > ū > .w > man", HomePath: "/usr/home", Pwd: "/usr/.äufbau/ūmgebung/.whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Letter, Expected: "u > .b > 1 > .w > man", HomePath: "/usr/home", Pwd: "/usr/.burp/12345/.whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Letter, Expected: "u > .b > 1 > .w > man", HomePath: "/usr/home", Pwd: "/usr/.burp/12345abc/.whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Letter, Expected: "u > .b > __p > .w > man", HomePath: "/usr/home", Pwd: "/usr/.burp/__pycache__/.whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Letter, Expected: "➼ > .w > man", HomePath: "/usr/home", Pwd: "➼/.whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Letter, Expected: "➼ s > .w > man", HomePath: "/usr/home", Pwd: "➼ something/.whatever/man", PathSeparator: "/", FolderSeparatorIcon: " > "},
-
-		{Style: Unique, Expected: "~ > a > ab > abcd", HomePath: "/usr/home", Pwd: "/usr/home/ab/abc/abcd", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Unique, Expected: "~ > a > .a > abcd", HomePath: "/usr/home", Pwd: "/usr/home/ab/.abc/abcd", PathSeparator: "/", FolderSeparatorIcon: " > "},
-		{Style: Unique, Expected: "~ > a > ab > abcd", HomePath: "/usr/home", Pwd: "/usr/home/ab/ab/abcd", PathSeparator: "/", FolderSeparatorIcon: " > "},
-
-		{Style: AgnosterShort, Expected: "localhost > c$", HomePath: homeBillWindows, Pwd: "\\\\localhost\\c$", PathSeparator: "\\", FolderSeparatorIcon: " > "},
-		{Style: AgnosterShort, Expected: "localhost\\c$", HomePath: homeBillWindows, Pwd: "\\\\localhost\\c$", PathSeparator: "\\", FolderSeparatorIcon: "\\"},
+		{
+			Style:               AgnosterShort,
+			Expected:            "~",
+			HomePath:            homeDirWindows,
+			Pwd:                 homeDirWindows,
+			GOOS:                platform.WINDOWS,
+			PathSeparator:       "\\",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            1,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            ".. > foo",
+			HomePath:            homeDirWindows,
+			Pwd:                 homeDirWindows + "\\foo",
+			GOOS:                platform.WINDOWS,
+			PathSeparator:       "\\",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            1,
+			HideRootLocation:    true,
+		},
+		{
+			Style:               AgnosterShort,
+			Expected:            ".. > foo",
+			HomePath:            homeDirWindows,
+			Pwd:                 homeDirWindows + "\\foo",
+			GOOS:                platform.WINDOWS,
+			PathSeparator:       "\\",
+			FolderSeparatorIcon: " > ",
+			MaxDepth:            2,
+			HideRootLocation:    true,
+		},
 	}
 	for _, tc := range cases {
 		env := new(mock.MockedEnvironment)
@@ -281,29 +734,32 @@ func TestAgnosterPathStyles(t *testing.T) {
 		env.On("GOOS").Return(tc.GOOS)
 		env.On("StackCount").Return(0)
 		env.On("IsWsl").Return(false)
-		env.On("DirIsWritable", tc.Pwd).Return(true)
-		args := &environment.Flags{
+		args := &platform.Flags{
 			PSWD: tc.Pswd,
 		}
 		env.On("Flags").Return(args)
+		env.On("Shell").Return(shell.PWSH)
 		path := &Path{
 			env: env,
 			props: properties.Map{
 				FolderSeparatorIcon: tc.FolderSeparatorIcon,
 				properties.Style:    tc.Style,
 				MaxDepth:            tc.MaxDepth,
+				MaxWidth:            tc.MaxWidth,
 				HideRootLocation:    tc.HideRootLocation,
 			},
 		}
-		_ = path.Enabled()
-		got := renderTemplate(env, "{{ .Path }}", path)
+		path.setPaths()
+		path.setStyle()
+		got := renderTemplateNoTrimSpace(env, "{{ .Path }}", path)
 		assert.Equal(t, tc.Expected, got)
 	}
 }
 
-func TestGetFullPath(t *testing.T) {
+func TestFullAndFolderPath(t *testing.T) {
 	cases := []struct {
 		Style                  string
+		HomePath               string
 		FolderSeparatorIcon    string
 		Pwd                    string
 		Pswd                   string
@@ -314,82 +770,75 @@ func TestGetFullPath(t *testing.T) {
 		StackCount             int
 		Template               string
 	}{
-		{Style: Full, Pwd: "/usr/home/abc", Template: "{{ .Path }}", StackCount: 2, Expected: "~/abc"},
-
 		{Style: Full, FolderSeparatorIcon: "|", Pwd: "/", Expected: "/"},
-		{Style: Full, Pwd: "", Expected: ""},
 		{Style: Full, Pwd: "/", Expected: "/"},
-		{Style: Full, Pwd: "/usr/home", Expected: "~"},
-		{Style: Full, Pwd: "/usr/home/abc", Expected: "~/abc"},
-		{Style: Full, Pwd: "/usr/home/abc", Expected: "/usr/home/abc", DisableMappedLocations: true},
+		{Style: Full, Pwd: homeDir, Expected: "~"},
+		{Style: Full, Pwd: homeDir + "/abc", Expected: "~/abc"},
+		{Style: Full, Pwd: homeDir + "/abc", Expected: homeDir + "/abc", DisableMappedLocations: true},
 		{Style: Full, Pwd: "/a/b/c/d", Expected: "/a/b/c/d"},
 
-		{Style: Full, FolderSeparatorIcon: "|", Pwd: "", Expected: ""},
-		{Style: Full, FolderSeparatorIcon: "|", Pwd: "/usr/home", Expected: "~"},
-		{Style: Full, FolderSeparatorIcon: "|", Pwd: "/usr/home", Expected: "|usr|home", DisableMappedLocations: true},
-		{Style: Full, FolderSeparatorIcon: "|", Pwd: "/usr/home/abc", Expected: "~|abc"},
-		{Style: Full, FolderSeparatorIcon: "|", Pwd: "/a/b/c/d", Expected: "|a|b|c|d"},
+		{Style: Full, FolderSeparatorIcon: "|", Pwd: homeDir, Expected: "~"},
+		{Style: Full, FolderSeparatorIcon: "|", Pwd: homeDir, Expected: "/home|someone", DisableMappedLocations: true},
+		{Style: Full, FolderSeparatorIcon: "|", Pwd: homeDir + "/abc", Expected: "~|abc"},
+		{Style: Full, FolderSeparatorIcon: "|", Pwd: "/a/b/c/d", Expected: "/a|b|c|d"},
 
-		{Style: Folder, Pwd: "", Expected: ""},
 		{Style: Folder, Pwd: "/", Expected: "/"},
-		{Style: Folder, Pwd: "/usr/home", Expected: "~"},
-		{Style: Folder, Pwd: "/usr/home", Expected: "home", DisableMappedLocations: true},
-		{Style: Folder, Pwd: "/usr/home/abc", Expected: "abc"},
+		{Style: Folder, Pwd: homeDir, Expected: "~"},
+		{Style: Folder, Pwd: homeDir, Expected: "someone", DisableMappedLocations: true},
+		{Style: Folder, Pwd: homeDir + "/abc", Expected: "abc"},
 		{Style: Folder, Pwd: "/a/b/c/d", Expected: "d"},
 
-		{Style: Folder, FolderSeparatorIcon: "|", Pwd: "", Expected: ""},
 		{Style: Folder, FolderSeparatorIcon: "|", Pwd: "/", Expected: "/"},
-		{Style: Folder, FolderSeparatorIcon: "|", Pwd: "/usr/home", Expected: "~"},
-		{Style: Folder, FolderSeparatorIcon: "|", Pwd: "/usr/home", Expected: "home", DisableMappedLocations: true},
-		{Style: Folder, FolderSeparatorIcon: "|", Pwd: "/usr/home/abc", Expected: "abc"},
+		{Style: Folder, FolderSeparatorIcon: "|", Pwd: homeDir, Expected: "~"},
+		{Style: Folder, FolderSeparatorIcon: "|", Pwd: homeDir, Expected: "someone", DisableMappedLocations: true},
+		{Style: Folder, FolderSeparatorIcon: "|", Pwd: homeDir + "/abc", Expected: "abc"},
 		{Style: Folder, FolderSeparatorIcon: "|", Pwd: "/a/b/c/d", Expected: "d"},
 
-		{Style: Folder, FolderSeparatorIcon: "\\", Pwd: "C:\\", Expected: "C:\\", PathSeparator: "\\", GOOS: environment.WindowsPlatform},
-		{Style: Full, FolderSeparatorIcon: "\\", Pwd: "C:\\Users\\Jan", Expected: "C:\\Users\\Jan", PathSeparator: "\\", GOOS: environment.WindowsPlatform},
+		// for Windows paths
+		{Style: Folder, FolderSeparatorIcon: "\\", Pwd: "C:\\", Expected: "C:\\", PathSeparator: "\\", GOOS: platform.WINDOWS},
+		{Style: Folder, FolderSeparatorIcon: "\\", Pwd: homeDirWindows, Expected: "~", PathSeparator: "\\", GOOS: platform.WINDOWS},
+		{Style: Full, FolderSeparatorIcon: "\\", Pwd: homeDirWindows, Expected: "~", PathSeparator: "\\", GOOS: platform.WINDOWS},
+		{Style: Full, FolderSeparatorIcon: "\\", Pwd: homeDirWindows + "\\abc", Expected: "~\\abc", PathSeparator: "\\", GOOS: platform.WINDOWS},
+		{Style: Full, FolderSeparatorIcon: "\\", Pwd: "C:\\Users\\posh", Expected: "C:\\Users\\posh", PathSeparator: "\\", GOOS: platform.WINDOWS},
 
 		// StackCountEnabled=true and StackCount=2
 		{Style: Full, FolderSeparatorIcon: "|", Pwd: "/", StackCount: 2, Expected: "2 /"},
-		{Style: Full, Pwd: "", StackCount: 2, Expected: "2"},
 		{Style: Full, Pwd: "/", StackCount: 2, Expected: "2 /"},
-		{Style: Full, Pwd: "/usr/home", StackCount: 2, Expected: "2 ~"},
-		{Style: Full, Pwd: "/usr/home/abc", StackCount: 2, Expected: "2 ~/abc"},
-		{Style: Full, Pwd: "/usr/home/abc", StackCount: 2, Expected: "2 /usr/home/abc", DisableMappedLocations: true},
+		{Style: Full, Pwd: homeDir, StackCount: 2, Expected: "2 ~"},
+		{Style: Full, Pwd: homeDir + "/abc", StackCount: 2, Expected: "2 ~/abc"},
+		{Style: Full, Pwd: homeDir + "/abc", StackCount: 2, Expected: "2 " + homeDir + "/abc", DisableMappedLocations: true},
 		{Style: Full, Pwd: "/a/b/c/d", StackCount: 2, Expected: "2 /a/b/c/d"},
 
 		// StackCountEnabled=false and StackCount=2
 		{Style: Full, FolderSeparatorIcon: "|", Pwd: "/", Template: "{{ .Path }}", StackCount: 2, Expected: "/"},
-		{Style: Full, Pwd: "", Template: "{{ .Path }}", StackCount: 2, Expected: ""},
 		{Style: Full, Pwd: "/", Template: "{{ .Path }}", StackCount: 2, Expected: "/"},
-		{Style: Full, Pwd: "/usr/home", Template: "{{ .Path }}", StackCount: 2, Expected: "~"},
+		{Style: Full, Pwd: homeDir, Template: "{{ .Path }}", StackCount: 2, Expected: "~"},
 
-		{Style: Full, Pwd: "/usr/home/abc", Template: "{{ .Path }}", StackCount: 2, Expected: "/usr/home/abc", DisableMappedLocations: true},
+		{Style: Full, Pwd: homeDir + "/abc", Template: "{{ .Path }}", StackCount: 2, Expected: homeDir + "/abc", DisableMappedLocations: true},
 		{Style: Full, Pwd: "/a/b/c/d", Template: "{{ .Path }}", StackCount: 2, Expected: "/a/b/c/d"},
 
 		// StackCountEnabled=true and StackCount=0
 		{Style: Full, FolderSeparatorIcon: "|", Pwd: "/", StackCount: 0, Expected: "/"},
-		{Style: Full, Pwd: "", StackCount: 0, Expected: ""},
 		{Style: Full, Pwd: "/", StackCount: 0, Expected: "/"},
-		{Style: Full, Pwd: "/usr/home", StackCount: 0, Expected: "~"},
-		{Style: Full, Pwd: "/usr/home/abc", StackCount: 0, Expected: "~/abc"},
-		{Style: Full, Pwd: "/usr/home/abc", StackCount: 0, Expected: "/usr/home/abc", DisableMappedLocations: true},
+		{Style: Full, Pwd: homeDir, StackCount: 0, Expected: "~"},
+		{Style: Full, Pwd: homeDir + "/abc", StackCount: 0, Expected: "~/abc"},
+		{Style: Full, Pwd: homeDir + "/abc", StackCount: 0, Expected: homeDir + "/abc", DisableMappedLocations: true},
 		{Style: Full, Pwd: "/a/b/c/d", StackCount: 0, Expected: "/a/b/c/d"},
 
 		// StackCountEnabled=true and StackCount<0
 		{Style: Full, FolderSeparatorIcon: "|", Pwd: "/", StackCount: -1, Expected: "/"},
-		{Style: Full, Pwd: "", StackCount: -1, Expected: ""},
 		{Style: Full, Pwd: "/", StackCount: -1, Expected: "/"},
-		{Style: Full, Pwd: "/usr/home", StackCount: -1, Expected: "~"},
-		{Style: Full, Pwd: "/usr/home/abc", StackCount: -1, Expected: "~/abc"},
-		{Style: Full, Pwd: "/usr/home/abc", StackCount: -1, Expected: "/usr/home/abc", DisableMappedLocations: true},
+		{Style: Full, Pwd: homeDir, StackCount: -1, Expected: "~"},
+		{Style: Full, Pwd: homeDir + "/abc", StackCount: -1, Expected: "~/abc"},
+		{Style: Full, Pwd: homeDir + "/abc", StackCount: -1, Expected: homeDir + "/abc", DisableMappedLocations: true},
 		{Style: Full, Pwd: "/a/b/c/d", StackCount: -1, Expected: "/a/b/c/d"},
 
 		// StackCountEnabled=true and StackCount not set
 		{Style: Full, FolderSeparatorIcon: "|", Pwd: "/", Expected: "/"},
-		{Style: Full, Pwd: "", Expected: ""},
 		{Style: Full, Pwd: "/", Expected: "/"},
-		{Style: Full, Pwd: "/usr/home", Expected: "~"},
-		{Style: Full, Pwd: "/usr/home/abc", Expected: "~/abc"},
-		{Style: Full, Pwd: "/usr/home/abc", Expected: "/usr/home/abc", DisableMappedLocations: true},
+		{Style: Full, Pwd: homeDir, Expected: "~"},
+		{Style: Full, Pwd: homeDir + "/abc", Expected: "~/abc"},
+		{Style: Full, Pwd: homeDir + "/abc", Expected: homeDir + "/abc", DisableMappedLocations: true},
 		{Style: Full, Pwd: "/a/b/c/d", Expected: "/a/b/c/d"},
 	}
 
@@ -399,16 +848,20 @@ func TestGetFullPath(t *testing.T) {
 			tc.PathSeparator = "/"
 		}
 		env.On("PathSeparator").Return(tc.PathSeparator)
-		env.On("Home").Return("/usr/home")
+		if tc.GOOS == platform.WINDOWS {
+			env.On("Home").Return(homeDirWindows)
+		} else {
+			env.On("Home").Return(homeDir)
+		}
 		env.On("Pwd").Return(tc.Pwd)
 		env.On("GOOS").Return(tc.GOOS)
 		env.On("StackCount").Return(tc.StackCount)
 		env.On("IsWsl").Return(false)
-		env.On("DirIsWritable", tc.Pwd).Return(true)
-		args := &environment.Flags{
+		args := &platform.Flags{
 			PSWD: tc.Pswd,
 		}
 		env.On("Flags").Return(args)
+		env.On("Shell").Return(shell.GENERIC)
 		if len(tc.Template) == 0 {
 			tc.Template = "{{ if gt .StackCount 0 }}{{ .StackCount }} {{ end }}{{ .Path }}"
 		}
@@ -422,128 +875,250 @@ func TestGetFullPath(t *testing.T) {
 			props[MappedLocationsEnabled] = false
 		}
 		path := &Path{
-			env:   env,
-			props: props,
+			env:        env,
+			props:      props,
+			StackCount: env.StackCount(),
 		}
-		_ = path.Enabled()
-		got := renderTemplate(env, tc.Template, path)
+		path.setPaths()
+		path.setStyle()
+		got := renderTemplateNoTrimSpace(env, tc.Template, path)
 		assert.Equal(t, tc.Expected, got)
 	}
 }
 
-func TestGetFullPathCustomMappedLocations(t *testing.T) {
+func TestFullPathCustomMappedLocations(t *testing.T) {
 	cases := []struct {
 		Pwd             string
 		MappedLocations map[string]string
+		GOOS            string
+		PathSeparator   string
 		Expected        string
 	}{
+		{Pwd: "/a/b/c/d", MappedLocations: map[string]string{"{{ .Env.HOME }}/d": "#"}, Expected: "#"},
 		{Pwd: "/a/b/c/d", MappedLocations: map[string]string{"/a/b/c/d": "#"}, Expected: "#"},
-		{Pwd: "/a/b/c/d", MappedLocations: map[string]string{"\\a\\b": "#"}, Expected: "#/c/d"},
-		{Pwd: "\\a\\b\\c\\d", MappedLocations: map[string]string{"\\a\\b": "#"}, Expected: "#\\c\\d"},
+		{Pwd: "\\a\\b\\c\\d", MappedLocations: map[string]string{"\\a\\b": "#"}, GOOS: platform.WINDOWS, PathSeparator: "\\", Expected: "#\\c\\d"},
 		{Pwd: "/a/b/c/d", MappedLocations: map[string]string{"/a/b": "#"}, Expected: "#/c/d"},
 		{Pwd: "/a/b/c/d", MappedLocations: map[string]string{"/a/b": "/e/f"}, Expected: "/e/f/c/d"},
-		{Pwd: "/usr/home/a/b/c/d", MappedLocations: map[string]string{"~\\a\\b": "#"}, Expected: "#/c/d"},
-		{Pwd: "/usr/home/a/b/c/d", MappedLocations: map[string]string{"~/a/b": "#"}, Expected: "#/c/d"},
-		{Pwd: "/a/usr/home/b/c/d", MappedLocations: map[string]string{"/a~": "#"}, Expected: "/a/usr/home/b/c/d"},
-		{Pwd: "/usr/home/a/b/c/d", MappedLocations: map[string]string{"/a/b": "#"}, Expected: "/usr/home/a/b/c/d"},
+		{Pwd: homeDir + "/a/b/c/d", MappedLocations: map[string]string{"~/a/b": "#"}, Expected: "#/c/d"},
+		{Pwd: "/a" + homeDir + "/b/c/d", MappedLocations: map[string]string{"/a~": "#"}, Expected: "/a" + homeDir + "/b/c/d"},
+		{Pwd: homeDir + "/a/b/c/d", MappedLocations: map[string]string{"/a/b": "#"}, Expected: homeDir + "/a/b/c/d"},
 	}
 
 	for _, tc := range cases {
 		env := new(mock.MockedEnvironment)
-		env.On("PathSeparator").Return("/")
-		env.On("Home").Return("/usr/home")
+		env.On("Home").Return(homeDir)
 		env.On("Pwd").Return(tc.Pwd)
-		env.On("GOOS").Return("")
-		args := &environment.Flags{
+		if tc.GOOS == "" {
+			tc.GOOS = platform.DARWIN
+		}
+		env.On("GOOS").Return(tc.GOOS)
+		if tc.PathSeparator == "" {
+			tc.PathSeparator = "/"
+		}
+		env.On("PathSeparator").Return(tc.PathSeparator)
+		args := &platform.Flags{
 			PSWD: tc.Pwd,
 		}
 		env.On("Flags").Return(args)
+		env.On("Shell").Return(shell.GENERIC)
+		env.On("TemplateCache").Return(&platform.TemplateCache{
+			Env: map[string]string{
+				"HOME": "/a/b/c",
+			},
+		})
 		path := &Path{
 			env: env,
 			props: properties.Map{
+				properties.Style:       Full,
 				MappedLocationsEnabled: false,
 				MappedLocations:        tc.MappedLocations,
 			},
 		}
-		got := path.getFullPath()
+		path.setPaths()
+		path.setStyle()
+		got := renderTemplateNoTrimSpace(env, "{{ .Path }}", path)
 		assert.Equal(t, tc.Expected, got)
 	}
 }
 
-func TestNormalizePath(t *testing.T) {
-	cases := []struct {
-		Input    string
-		GOOS     string
-		Expected string
-	}{
-		{Input: "C:\\Users\\Bob\\Foo", GOOS: environment.LinuxPlatform, Expected: "C:/Users/Bob/Foo"},
-		{Input: "C:\\Users\\Bob\\Foo", GOOS: environment.WindowsPlatform, Expected: "c:/users/bob/foo"},
-		{Input: "~\\Bob\\Foo", GOOS: environment.LinuxPlatform, Expected: "/usr/home/Bob/Foo"},
-		{Input: "~\\Bob\\Foo", GOOS: environment.WindowsPlatform, Expected: "/usr/home/bob/foo"},
-		{Input: "/foo/~/bar", GOOS: environment.LinuxPlatform, Expected: "/foo/~/bar"},
-		{Input: "/foo/~/bar", GOOS: environment.WindowsPlatform, Expected: "/foo/~/bar"},
-		{Input: "~/baz", GOOS: environment.LinuxPlatform, Expected: "/usr/home/baz"},
-		{Input: "~/baz", GOOS: environment.WindowsPlatform, Expected: "/usr/home/baz"},
-	}
-
-	for _, tc := range cases {
-		env := new(mock.MockedEnvironment)
-		env.On("Home").Return("/usr/home")
-		env.On("GOOS").Return(tc.GOOS)
-		pt := &Path{
-			env: env,
-		}
-		got := pt.normalize(tc.Input)
-		assert.Equal(t, tc.Expected, got)
-	}
-}
-
-func TestGetFolderPathCustomMappedLocations(t *testing.T) {
+func TestFolderPathCustomMappedLocations(t *testing.T) {
 	pwd := "/a/b/c/d"
 	env := new(mock.MockedEnvironment)
 	env.On("PathSeparator").Return("/")
-	env.On("Home").Return("/usr/home")
+	env.On("Home").Return(homeDir)
 	env.On("Pwd").Return(pwd)
 	env.On("GOOS").Return("")
-	args := &environment.Flags{
+	args := &platform.Flags{
 		PSWD: pwd,
 	}
 	env.On("Flags").Return(args)
+	env.On("Shell").Return(shell.GENERIC)
 	path := &Path{
 		env: env,
 		props: properties.Map{
+			properties.Style: Folder,
 			MappedLocations: map[string]string{
 				"/a/b/c/d": "#",
 			},
 		},
 	}
-	got := path.getFolderPath()
+	path.setPaths()
+	path.setStyle()
+	got := renderTemplateNoTrimSpace(env, "{{ .Path }}", path)
 	assert.Equal(t, "#", got)
 }
 
-func TestAgnosterPath(t *testing.T) { // nolint:dupl
+func TestAgnosterPath(t *testing.T) {
 	cases := []struct {
-		Case          string
-		Expected      string
-		Home          string
-		PWD           string
-		PathSeparator string
+		Case           string
+		Expected       string
+		Home           string
+		PWD            string
+		GOOS           string
+		PathSeparator  string
+		Cycle          []string
+		ColorSeparator bool
 	}{
-		{Case: "Windows outside home", Expected: "C: > f > f > location", Home: homeBillWindows, PWD: "C:\\Program Files\\Go\\location", PathSeparator: "\\"},
-		{Case: "Windows oustide home", Expected: "~ > f > f > location", Home: homeBillWindows, PWD: homeBillWindows + "\\Documents\\Bill\\location", PathSeparator: "\\"},
-		{Case: "Windows inside home zero levels", Expected: "C: > location", Home: homeBillWindows, PWD: "C:\\location", PathSeparator: "\\"},
-		{Case: "Windows inside home one level", Expected: "C: > f > location", Home: homeBillWindows, PWD: "C:\\Program Files\\location", PathSeparator: "\\"},
-		{Case: "Windows lower case drive letter", Expected: "C: > Windows", Home: homeBillWindows, PWD: "C:\\Windows\\", PathSeparator: "\\"},
-		{Case: "Windows lower case drive letter (other)", Expected: "P: > Other", Home: homeBillWindows, PWD: "P:\\Other\\", PathSeparator: "\\"},
-		{Case: "Windows lower word drive", Expected: "some: > some", Home: homeBillWindows, PWD: "some:\\some\\", PathSeparator: "\\"},
-		{Case: "Windows lower word drive (ending with c)", Expected: "src: > source", Home: homeBillWindows, PWD: "src:\\source\\", PathSeparator: "\\"},
-		{Case: "Windows lower word drive (arbitrary cases)", Expected: "sRc: > source", Home: homeBillWindows, PWD: "sRc:\\source\\", PathSeparator: "\\"},
-		{Case: "Windows registry drive", Expected: "\uf013 > f > magnetic:test", Home: homeBillWindows, PWD: "HKLM:\\SOFTWARE\\magnetic:test\\", PathSeparator: "\\"},
-		{Case: "Windows registry drive case sensitive", Expected: "\uf013 > f > magnetic:TOAST", Home: homeBillWindows, PWD: "HKLM:\\SOFTWARE\\magnetic:TOAST\\", PathSeparator: "\\"},
-		{Case: "Unix outside home", Expected: "mnt > f > f > location", Home: homeJan, PWD: "/mnt/go/test/location", PathSeparator: "/"},
-		{Case: "Unix inside home", Expected: "~ > f > f > location", Home: homeJan, PWD: homeJan + "/docs/jan/location", PathSeparator: "/"},
-		{Case: "Unix outside home zero levels", Expected: "mnt > location", Home: homeJan, PWD: "/mnt/location", PathSeparator: "/"},
-		{Case: "Unix outside home one level", Expected: "mnt > f > location", Home: homeJan, PWD: "/mnt/folder/location", PathSeparator: "/"},
+		{
+			Case:          "Windows registry drive case sensitive",
+			Expected:      "\uf013 > f > magnetic:TOAST",
+			Home:          homeDirWindows,
+			PWD:           "HKLM:\\SOFTWARE\\magnetic:TOAST\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows outside home",
+			Expected:      "C: > f > f > location",
+			Home:          homeDirWindows,
+			PWD:           "C:\\Program Files\\Go\\location",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows oustide home",
+			Expected:      "~ > f > f > location",
+			Home:          homeDirWindows,
+			PWD:           homeDirWindows + "\\Documents\\Bill\\location",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows inside home zero levels",
+			Expected:      "C: > location",
+			Home:          homeDirWindows,
+			PWD:           "C:\\location",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows inside home one level",
+			Expected:      "C: > f > location",
+			Home:          homeDirWindows,
+			PWD:           "C:\\Program Files\\location",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows lower case drive letter",
+			Expected:      "C: > Windows",
+			Home:          homeDirWindows,
+			PWD:           "C:\\Windows\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows lower case drive letter (other)",
+			Expected:      "P: > Other",
+			Home:          homeDirWindows,
+			PWD:           "P:\\Other\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows lower word drive",
+			Expected:      "some: > some",
+			Home:          homeDirWindows,
+			PWD:           "some:\\some\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows lower word drive (ending with c)",
+			Expected:      "src: > source",
+			Home:          homeDirWindows,
+			PWD:           "src:\\source\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows lower word drive (arbitrary cases)",
+			Expected:      "sRc: > source",
+			Home:          homeDirWindows,
+			PWD:           "sRc:\\source\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows registry drive",
+			Expected:      "\uf013 > f > magnetic:test",
+			Home:          homeDirWindows,
+			PWD:           "HKLM:\\SOFTWARE\\magnetic:test\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Unix outside home",
+			Expected:      "mnt > f > f > location",
+			Home:          homeDir,
+			PWD:           "/mnt/go/test/location",
+			PathSeparator: "/",
+		},
+		{
+			Case:          "Unix inside home",
+			Expected:      "~ > f > f > location",
+			Home:          homeDir,
+			PWD:           homeDir + "/docs/jan/location",
+			PathSeparator: "/",
+		},
+		{
+			Case:          "Unix outside home zero levels",
+			Expected:      "mnt > location",
+			Home:          homeDir,
+			PWD:           "/mnt/location",
+			PathSeparator: "/",
+		},
+		{
+			Case:          "Unix outside home one level",
+			Expected:      "mnt > f > location",
+			Home:          homeDir,
+			PWD:           "/mnt/folder/location",
+			PathSeparator: "/",
+		},
+		{
+			Case:          "Unix, colorize",
+			Expected:      "<blue>mnt</> > <yellow>f</> > <blue>location</>",
+			Home:          homeDir,
+			PWD:           "/mnt/folder/location",
+			PathSeparator: "/",
+			Cycle:         []string{"blue", "yellow"},
+		},
+		{
+			Case:           "Unix, colorize with folder separator",
+			Expected:       "<blue>mnt</><yellow> > </><yellow>f</><blue> > </><blue>location</>",
+			Home:           homeDir,
+			PWD:            "/mnt/folder/location",
+			PathSeparator:  "/",
+			Cycle:          []string{"blue", "yellow"},
+			ColorSeparator: true,
+		},
+		{
+			Case:          "Unix one level",
+			Expected:      "mnt",
+			Home:          homeDir,
+			PWD:           "/mnt",
+			PathSeparator: "/",
+		},
 	}
 
 	for _, tc := range cases {
@@ -551,47 +1126,155 @@ func TestAgnosterPath(t *testing.T) { // nolint:dupl
 		env.On("Home").Return(tc.Home)
 		env.On("PathSeparator").Return(tc.PathSeparator)
 		env.On("Pwd").Return(tc.PWD)
-		env.On("GOOS").Return("")
-		args := &environment.Flags{
+		env.On("GOOS").Return(tc.GOOS)
+		args := &platform.Flags{
 			PSWD: tc.PWD,
 		}
 		env.On("Flags").Return(args)
+		env.On("Shell").Return(shell.PWSH)
 		path := &Path{
 			env: env,
 			props: properties.Map{
-				FolderSeparatorIcon: " > ",
-				FolderIcon:          "f",
-				HomeIcon:            "~",
+				properties.Style:     Agnoster,
+				FolderSeparatorIcon:  " > ",
+				FolderIcon:           "f",
+				HomeIcon:             "~",
+				Cycle:                tc.Cycle,
+				CycleFolderSeparator: tc.ColorSeparator,
 			},
 		}
-		got := path.getAgnosterPath()
+		path.setPaths()
+		path.setStyle()
+		got := renderTemplateNoTrimSpace(env, "{{ .Path }}", path)
 		assert.Equal(t, tc.Expected, got, tc.Case)
 	}
 }
 
-func TestAgnosterLeftPath(t *testing.T) { // nolint:dupl
+func TestAgnosterLeftPath(t *testing.T) {
 	cases := []struct {
 		Case          string
 		Expected      string
 		Home          string
 		PWD           string
+		GOOS          string
 		PathSeparator string
 	}{
-		{Case: "Windows outside home", Expected: "C: > Program Files > f > f", Home: homeBillWindows, PWD: "C:\\Program Files\\Go\\location", PathSeparator: "\\"},
-		{Case: "Windows inside home", Expected: "~ > Documents > f > f", Home: homeBillWindows, PWD: homeBillWindows + "\\Documents\\Bill\\location", PathSeparator: "\\"},
-		{Case: "Windows inside home zero levels", Expected: "C: > location", Home: homeBillWindows, PWD: "C:\\location", PathSeparator: "\\"},
-		{Case: "Windows inside home one level", Expected: "C: > Program Files > f", Home: homeBillWindows, PWD: "C:\\Program Files\\location", PathSeparator: "\\"},
-		{Case: "Windows lower case drive letter", Expected: "C: > Windows", Home: homeBillWindows, PWD: "C:\\Windows\\", PathSeparator: "\\"},
-		{Case: "Windows lower case drive letter (other)", Expected: "P: > Other", Home: homeBillWindows, PWD: "P:\\Other\\", PathSeparator: "\\"},
-		{Case: "Windows lower word drive", Expected: "some: > some", Home: homeBillWindows, PWD: "some:\\some\\", PathSeparator: "\\"},
-		{Case: "Windows lower word drive (ending with c)", Expected: "src: > source", Home: homeBillWindows, PWD: "src:\\source\\", PathSeparator: "\\"},
-		{Case: "Windows lower word drive (arbitrary cases)", Expected: "sRc: > source", Home: homeBillWindows, PWD: "sRc:\\source\\", PathSeparator: "\\"},
-		{Case: "Windows registry drive", Expected: "\uf013 > SOFTWARE > f", Home: homeBillWindows, PWD: "HKLM:\\SOFTWARE\\magnetic:test\\", PathSeparator: "\\"},
-		{Case: "Windows registry drive case sensitive", Expected: "\uf013 > SOFTWARE > f", Home: homeBillWindows, PWD: "HKLM:\\SOFTWARE\\magnetic:TOAST\\", PathSeparator: "\\"},
-		{Case: "Unix outside home", Expected: "mnt > go > f > f", Home: homeJan, PWD: "/mnt/go/test/location", PathSeparator: "/"},
-		{Case: "Unix inside home", Expected: "~ > docs > f > f", Home: homeJan, PWD: homeJan + "/docs/jan/location", PathSeparator: "/"},
-		{Case: "Unix outside home zero levels", Expected: "mnt > location", Home: homeJan, PWD: "/mnt/location", PathSeparator: "/"},
-		{Case: "Unix outside home one level", Expected: "mnt > folder > f", Home: homeJan, PWD: "/mnt/folder/location", PathSeparator: "/"},
+		{
+			Case:          "Windows inside home",
+			Expected:      "~ > Documents > f > f",
+			Home:          homeDirWindows,
+			PWD:           homeDirWindows + "\\Documents\\Bill\\location",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows outside home",
+			Expected:      "C: > Program Files > f > f",
+			Home:          homeDirWindows,
+			PWD:           "C:\\Program Files\\Go\\location",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows inside home zero levels",
+			Expected:      "C: > location",
+			Home:          homeDirWindows,
+			PWD:           "C:\\location",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows inside home one level",
+			Expected:      "C: > Program Files > f",
+			Home:          homeDirWindows,
+			PWD:           "C:\\Program Files\\location",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows lower case drive letter",
+			Expected:      "C: > Windows",
+			Home:          homeDirWindows,
+			PWD:           "C:\\Windows\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows lower case drive letter (other)",
+			Expected:      "P: > Other",
+			Home:          homeDirWindows,
+			PWD:           "P:\\Other\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows lower word drive",
+			Expected:      "some: > some",
+			Home:          homeDirWindows,
+			PWD:           "some:\\some\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows lower word drive (ending with c)",
+			Expected:      "src: > source",
+			Home:          homeDirWindows,
+			PWD:           "src:\\source\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows lower word drive (arbitrary cases)",
+			Expected:      "sRc: > source",
+			Home:          homeDirWindows,
+			PWD:           "sRc:\\source\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows registry drive",
+			Expected:      "\uf013 > SOFTWARE > f",
+			Home:          homeDirWindows,
+			PWD:           "HKLM:\\SOFTWARE\\magnetic:test\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Windows registry drive case sensitive",
+			Expected:      "\uf013 > SOFTWARE > f",
+			Home:          homeDirWindows,
+			PWD:           "HKLM:\\SOFTWARE\\magnetic:TOAST\\",
+			GOOS:          platform.WINDOWS,
+			PathSeparator: "\\",
+		},
+		{
+			Case:          "Unix outside home",
+			Expected:      "mnt > go > f > f",
+			Home:          homeDir,
+			PWD:           "/mnt/go/test/location",
+			PathSeparator: "/",
+		},
+		{
+			Case:          "Unix inside home",
+			Expected:      "~ > docs > f > f",
+			Home:          homeDir,
+			PWD:           homeDir + "/docs/jan/location",
+			PathSeparator: "/",
+		},
+		{
+			Case:          "Unix outside home zero levels",
+			Expected:      "mnt > location",
+			Home:          homeDir,
+			PWD:           "/mnt/location",
+			PathSeparator: "/",
+		},
+		{
+			Case:          "Unix outside home one level",
+			Expected:      "mnt > folder > f",
+			Home:          homeDir,
+			PWD:           "/mnt/folder/location",
+			PathSeparator: "/",
+		},
 	}
 
 	for _, tc := range cases {
@@ -599,20 +1282,24 @@ func TestAgnosterLeftPath(t *testing.T) { // nolint:dupl
 		env.On("Home").Return(tc.Home)
 		env.On("PathSeparator").Return(tc.PathSeparator)
 		env.On("Pwd").Return(tc.PWD)
-		env.On("GOOS").Return("")
-		args := &environment.Flags{
+		env.On("GOOS").Return(tc.GOOS)
+		args := &platform.Flags{
 			PSWD: tc.PWD,
 		}
 		env.On("Flags").Return(args)
+		env.On("Shell").Return(shell.PWSH)
 		path := &Path{
 			env: env,
 			props: properties.Map{
+				properties.Style:    AgnosterLeft,
 				FolderSeparatorIcon: " > ",
 				FolderIcon:          "f",
 				HomeIcon:            "~",
 			},
 		}
-		got := path.getAgnosterLeftPath()
+		path.setPaths()
+		path.setStyle()
+		got := renderTemplateNoTrimSpace(env, "{{ .Path }}", path)
 		assert.Equal(t, tc.Expected, got, tc.Case)
 	}
 }
@@ -624,19 +1311,20 @@ func TestGetPwd(t *testing.T) {
 		Pswd                   string
 		Expected               string
 	}{
-		{MappedLocationsEnabled: true, Pwd: "", Expected: ""},
+		{MappedLocationsEnabled: true, Pwd: homeDir, Expected: "~"},
+		{MappedLocationsEnabled: true, Pwd: homeDir + "-test", Expected: homeDir + "-test"},
+		{MappedLocationsEnabled: true},
 		{MappedLocationsEnabled: true, Pwd: "/usr", Expected: "/usr"},
-		{MappedLocationsEnabled: true, Pwd: "/usr/home", Expected: "~"},
-		{MappedLocationsEnabled: true, Pwd: "/usr/home/abc", Expected: "~/abc"},
+		{MappedLocationsEnabled: true, Pwd: homeDir + "/abc", Expected: "~/abc"},
 		{MappedLocationsEnabled: true, Pwd: "/a/b/c/d", Expected: "#"},
 		{MappedLocationsEnabled: true, Pwd: "/a/b/c/d/e/f/g", Expected: "#/e/f/g"},
 		{MappedLocationsEnabled: true, Pwd: "/z/y/x/w", Expected: "/z/y/x/w"},
 
-		{MappedLocationsEnabled: false, Pwd: "", Expected: ""},
-		{MappedLocationsEnabled: false, Pwd: "/usr/home/abc", Expected: "/usr/home/abc"},
+		{MappedLocationsEnabled: false},
+		{MappedLocationsEnabled: false, Pwd: homeDir + "/abc", Expected: homeDir + "/abc"},
 		{MappedLocationsEnabled: false, Pwd: "/a/b/c/d/e/f/g", Expected: "#/e/f/g"},
-		{MappedLocationsEnabled: false, Pwd: "/usr/home/c/d/e/f/g", Expected: "/usr/home/c/d/e/f/g"},
-		{MappedLocationsEnabled: true, Pwd: "/usr/home/c/d/e/f/g", Expected: "~/c/d/e/f/g"},
+		{MappedLocationsEnabled: false, Pwd: homeDir + "/c/d/e/f/g", Expected: homeDir + "/c/d/e/f/g"},
+		{MappedLocationsEnabled: true, Pwd: homeDir + "/c/d/e/f/g", Expected: "~/c/d/e/f/g"},
 
 		{MappedLocationsEnabled: true, Pwd: "/w/d/x/w", Pswd: "/z/y/x/w", Expected: "/z/y/x/w"},
 		{MappedLocationsEnabled: false, Pwd: "/f/g/k/d/e/f/g", Pswd: "/a/b/c/d/e/f/g", Expected: "#/e/f/g"},
@@ -645,13 +1333,14 @@ func TestGetPwd(t *testing.T) {
 	for _, tc := range cases {
 		env := new(mock.MockedEnvironment)
 		env.On("PathSeparator").Return("/")
-		env.On("Home").Return("/usr/home")
+		env.On("Home").Return(homeDir)
 		env.On("Pwd").Return(tc.Pwd)
 		env.On("GOOS").Return("")
-		args := &environment.Flags{
+		args := &platform.Flags{
 			PSWD: tc.Pswd,
 		}
 		env.On("Flags").Return(args)
+		env.On("Shell").Return(shell.PWSH)
 		path := &Path{
 			env: env,
 			props: properties.Map{
@@ -661,8 +1350,8 @@ func TestGetPwd(t *testing.T) {
 				},
 			},
 		}
-		got := path.getPwd()
-		assert.Equal(t, tc.Expected, got)
+		path.setPaths()
+		assert.Equal(t, tc.Expected, path.pwd)
 	}
 }
 
@@ -676,14 +1365,15 @@ func TestGetFolderSeparator(t *testing.T) {
 		{Case: "default", Expected: "/"},
 		{Case: "icon - no template", FolderSeparatorIcon: "\ue5fe", Expected: "\ue5fe"},
 		{Case: "template", FolderSeparatorTemplate: "{{ if eq .Shell \"bash\" }}\\{{ end }}", Expected: "\\"},
-		{Case: "template empty", FolderSeparatorTemplate: "{{ if eq .Shell \"pwsh\" }}\\{{ end }}", Expected: ""},
-		{Case: "invalid template", FolderSeparatorTemplate: "{{ if eq .Shell \"pwsh\" }}", Expected: ""},
+		{Case: "template empty", FolderSeparatorTemplate: "{{ if eq .Shell \"pwsh\" }}\\{{ end }}", Expected: "/"},
+		{Case: "invalid template", FolderSeparatorTemplate: "{{ if eq .Shell \"pwsh\" }}", Expected: "/"},
 	}
 
 	for _, tc := range cases {
 		env := new(mock.MockedEnvironment)
 		env.On("PathSeparator").Return("/")
-		env.On("Log", mock2.Anything, mock2.Anything, mock2.Anything)
+		env.On("Error", mock2.Anything)
+		env.On("Debug", mock2.Anything)
 		path := &Path{
 			env: env,
 		}
@@ -694,12 +1384,80 @@ func TestGetFolderSeparator(t *testing.T) {
 		if len(tc.FolderSeparatorIcon) > 0 {
 			props[FolderSeparatorIcon] = tc.FolderSeparatorIcon
 		}
-		env.On("TemplateCache").Return(&environment.TemplateCache{
+		env.On("TemplateCache").Return(&platform.TemplateCache{
 			Env:   make(map[string]string),
 			Shell: "bash",
 		})
 		path.props = props
 		got := path.getFolderSeparator()
 		assert.Equal(t, tc.Expected, got)
+	}
+}
+
+func TestNormalizePath(t *testing.T) {
+	cases := []struct {
+		Input    string
+		HomeDir  string
+		GOOS     string
+		Expected string
+	}{
+		{Input: "/foo/~/bar", HomeDir: homeDirWindows, GOOS: platform.WINDOWS, Expected: "\\foo\\~\\bar"},
+		{Input: homeDirWindows + "\\Foo", HomeDir: homeDirWindows, GOOS: platform.WINDOWS, Expected: "c:\\users\\someone\\foo"},
+		{Input: "~/Bob\\Foo", HomeDir: homeDir, GOOS: platform.LINUX, Expected: homeDir + "/Bob\\Foo"},
+		{Input: "~/Bob\\Foo", HomeDir: homeDir, GOOS: platform.DARWIN, Expected: homeDir + "/bob\\foo"},
+		{Input: "~\\Bob\\Foo", HomeDir: homeDirWindows, GOOS: platform.WINDOWS, Expected: "c:\\users\\someone\\bob\\foo"},
+		{Input: "/foo/~/bar", HomeDir: homeDir, GOOS: platform.LINUX, Expected: "/foo/~/bar"},
+		{Input: "~/baz", HomeDir: homeDir, GOOS: platform.LINUX, Expected: homeDir + "/baz"},
+		{Input: "~/baz", HomeDir: homeDirWindows, GOOS: platform.WINDOWS, Expected: "c:\\users\\someone\\baz"},
+	}
+
+	for _, tc := range cases {
+		env := new(mock.MockedEnvironment)
+		env.On("Home").Return(tc.HomeDir)
+		env.On("GOOS").Return(tc.GOOS)
+		pt := &Path{
+			env: env,
+		}
+		got := pt.normalize(tc.Input)
+		assert.Equal(t, tc.Expected, got)
+	}
+}
+
+func TestReplaceMappedLocations(t *testing.T) {
+	cases := []struct {
+		Case     string
+		Pwd      string
+		Expected string
+	}{
+		{Pwd: "/c/l/k/f", Expected: "f"},
+		{Pwd: "/f/g/h", Expected: "/f/g/h"},
+		{Pwd: "/f/g/h/e", Expected: "^/e"},
+		{Pwd: "/a/b/c/d", Expected: "#"},
+		{Pwd: "/a/b/c/d/e", Expected: "#/e"},
+		{Pwd: "/a/b/c/d/e", Expected: "#/e"},
+		{Pwd: "/a/b/k/j/e", Expected: "e"},
+	}
+
+	for _, tc := range cases {
+		env := new(mock.MockedEnvironment)
+		env.On("PathSeparator").Return("/")
+		env.On("Pwd").Return(tc.Pwd)
+		env.On("Shell").Return(shell.FISH)
+		env.On("GOOS").Return(platform.DARWIN)
+		env.On("Home").Return("/a/b/k")
+		path := &Path{
+			env: env,
+			props: properties.Map{
+				MappedLocationsEnabled: false,
+				MappedLocations: map[string]string{
+					"/a/b/c/d": "#",
+					"/f/g/h/*": "^",
+					"/c/l/k/*": "",
+					"~/j/*":    "",
+				},
+			},
+		}
+		path.setPaths()
+		assert.Equal(t, tc.Expected, path.pwd)
 	}
 }

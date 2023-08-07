@@ -1,8 +1,11 @@
 package segments
 
 import (
-	"oh-my-posh/properties"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -60,27 +63,46 @@ func TestScmStatusChanged(t *testing.T) {
 	}
 }
 
-func TestScmStatusUnmerged(t *testing.T) {
-	expected := "x1"
-	status := &ScmStatus{
-		Unmerged: 1,
+func TestScmStatusString(t *testing.T) {
+	cases := []struct {
+		Case     string
+		Expected string
+		Status   ScmStatus
+	}{
+		{
+			Case:     "Unmerged",
+			Expected: "x1",
+			Status: ScmStatus{
+				Unmerged: 1,
+			},
+		},
+		{
+			Case:     "Unmerged and Modified",
+			Expected: "~3 x1",
+			Status: ScmStatus{
+				Unmerged: 1,
+				Modified: 3,
+			},
+		},
+		{
+			Case:   "Empty",
+			Status: ScmStatus{},
+		},
+		{
+			Case:     "Format override",
+			Expected: "Added: 1",
+			Status: ScmStatus{
+				Added: 1,
+				Formats: map[string]string{
+					"Added": "Added: %d",
+				},
+			},
+		},
 	}
-	assert.Equal(t, expected, status.String())
-}
 
-func TestScmStatusUnmergedModified(t *testing.T) {
-	expected := "~3 x1"
-	status := &ScmStatus{
-		Unmerged: 1,
-		Modified: 3,
+	for _, tc := range cases {
+		assert.Equal(t, tc.Expected, tc.Status.String(), tc.Case)
 	}
-	assert.Equal(t, expected, status.String())
-}
-
-func TestScmStatusEmpty(t *testing.T) {
-	expected := ""
-	status := &ScmStatus{}
-	assert.Equal(t, expected, status.String())
 }
 
 func TestTruncateBranch(t *testing.T) {
@@ -152,5 +174,41 @@ func TestTruncateBranchWithSymbol(t *testing.T) {
 			},
 		}
 		assert.Equal(t, tc.Expected, p.truncateBranch(tc.Branch), tc.Case)
+	}
+}
+
+func TestHasCommand(t *testing.T) {
+	cases := []struct {
+		Case            string
+		ExpectedCommand string
+		Command         string
+		GOOS            string
+		IsWslSharedPath bool
+		NativeFallback  bool
+	}{
+		{Case: "On Windows", ExpectedCommand: "git.exe", GOOS: platform.WINDOWS},
+		{Case: "Cache", ExpectedCommand: "git.exe", Command: "git.exe"},
+		{Case: "Non Windows", ExpectedCommand: "git"},
+		{Case: "Iside WSL2, non shared", ExpectedCommand: "git"},
+		{Case: "Iside WSL2, shared", ExpectedCommand: "git.exe", IsWslSharedPath: true},
+		{Case: "Iside WSL2, shared fallback", ExpectedCommand: "git", IsWslSharedPath: true, NativeFallback: true},
+	}
+
+	for _, tc := range cases {
+		env := new(mock.MockedEnvironment)
+		env.On("GOOS").Return(tc.GOOS)
+		env.On("InWSLSharedDrive").Return(tc.IsWslSharedPath)
+		env.On("HasCommand", "git").Return(true)
+		env.On("HasCommand", "git.exe").Return(!tc.NativeFallback)
+		s := &scm{
+			env: env,
+			props: properties.Map{
+				NativeFallback: tc.NativeFallback,
+			},
+			command: tc.Command,
+		}
+
+		_ = s.hasCommand(GITCOMMAND)
+		assert.Equal(t, tc.ExpectedCommand, s.command, tc.Case)
 	}
 }

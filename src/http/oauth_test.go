@@ -2,10 +2,10 @@ package http
 
 import (
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 
 	"github.com/stretchr/testify/assert"
 	mock2 "github.com/stretchr/testify/mock"
@@ -161,15 +161,14 @@ func TestOauthResult(t *testing.T) {
 		env.On("Cache").Return(cache)
 		env.On("HTTPRequest", url).Return([]byte(tc.JSONResponse), tc.Error)
 		env.On("HTTPRequest", tokenURL).Return([]byte(tc.TokenResponse), tc.Error)
-		env.On("Log", environment.Error, "OAuth", mock2.Anything).Return()
+		env.On("Error", mock2.Anything)
 
-		oauth := &OAuth{
-			Props:           props,
-			Env:             env,
+		oauth := &OAuthRequest{
 			AccessTokenKey:  accessTokenKey,
 			RefreshTokenKey: refreshTokenKey,
 			SegmentName:     "test",
 		}
+		oauth.Init(env, props)
 
 		got, err := OauthResult[*data](oauth, url, nil)
 		assert.Equal(t, tc.ExpectedData, got, tc.Case)

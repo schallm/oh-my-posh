@@ -13,6 +13,10 @@ module.exports = {
     path.resolve(__dirname, 'plugins', 'appinsights'),
     'docusaurus-node-polyfills'
   ],
+  stylesheets: [
+    "https://rsms.me/inter/inter.css",
+    "https://fonts.googleapis.com/css2?family=Fira+Code&display=swap"
+  ],
   themeConfig: {
     prism: {
       additionalLanguages: ['powershell', 'lua', 'jsstacktrace', 'toml'],
@@ -58,9 +62,15 @@ module.exports = {
           position: 'right',
         },
         {
-          href: 'https://twitter.com/jandedobbeleer',
-          className: 'header-twitter-link',
-          'aria-label': 'Twitter',
+          href: 'https://discord.gg/n7E3DkXssv',
+          className: 'header-discord-link',
+          'aria-label': 'Discord',
+          position: 'right',
+        },
+        {
+          href: 'https://staging.bsky.app/profile/ohmyposh.dev',
+          className: 'header-bluesky-link',
+          'aria-label': 'Bluesky',
           position: 'right',
         }
       ],
@@ -89,9 +99,13 @@ module.exports = {
               href: 'https://github.com/jandedobbeleer/oh-my-posh',
             },
             {
-              label: 'Twitter',
-              href: 'https://twitter.com/jandedobbeleer',
+              label: 'Discord',
+              href: 'https://discord.gg/n7E3DkXssv',
             },
+            {
+              label: 'Bluesky',
+              href: 'https://staging.bsky.app/profile/ohmyposh.dev',
+            }
           ],
         },
         {
@@ -109,13 +123,17 @@ module.exports = {
               label: 'Docusaurus',
               href: 'https://github.com/facebook/docusaurus',
             },
+            {
+              label: 'Privacy',
+              href: '/privacy',
+            },
           ],
         },
       ],
       copyright: `Copyright © ${new Date().getFullYear()} <a href='https://github.com/sponsors/JanDeDobbeleer' target='_blank'>Jan De Dobbeleer</a> and <a href='/docs/contributors'>contributors</a>.`,
     },
     appInsights: {
-      instrumentationKey: '72804848-dc30-4856-8245-4fa1450b041f',
+      instrumentationKey: '51741aa7-e087-4e80-b7b0-0863d467462a',
     },
     algolia: {
       appId: 'XIR4RB3TM1',
@@ -133,8 +151,8 @@ module.exports = {
         },
         theme: {
           customCss: [
-            require.resolve('./src/css/custom.css'),
-            require.resolve('./src/css/prism-rose-pine-moon.css')
+            require.resolve('./src/css/prism-rose-pine-moon.css'),
+            require.resolve('./src/css/custom.css')
           ],
         },
       },

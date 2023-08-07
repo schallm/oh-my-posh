@@ -2,11 +2,12 @@ package segments
 
 import (
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
 	"path/filepath"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -131,7 +132,7 @@ func prepareMockedEnvironment(tc *testCase) *mock.MockedEnvironment {
 	env.On("Home").Return("/home/user")
 	env.On("Pwd").Return(WorkingDirRoot)
 
-	env.On("TemplateCache").Return(&environment.TemplateCache{
+	env.On("TemplateCache").Return(&platform.TemplateCache{
 		Env: make(map[string]string),
 	})
 

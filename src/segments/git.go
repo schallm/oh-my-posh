@@ -2,15 +2,31 @@ package segments
 
 import (
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
-	"oh-my-posh/regex"
+	url2 "net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/regex"
 
 	"gopkg.in/ini.v1"
 )
+
+type Commit struct {
+	// git log -1 --pretty="format:%an%n%ae%n%cn%n%ce%n%at%n%s"
+	Author    *User
+	Committer *User
+	Subject   string
+	Timestamp time.Time
+}
+
+type User struct {
+	Name  string
+	Email string
+}
 
 // GitStatus represents part of the status of a git repository
 type GitStatus struct {
@@ -34,36 +50,21 @@ func (s *GitStatus) add(code string) {
 	}
 }
 
-type Git struct {
-	scm
-
-	Working       *GitStatus
-	Staging       *GitStatus
-	Ahead         int
-	Behind        int
-	HEAD          string
-	Ref           string
-	Hash          string
-	BranchStatus  string
-	Upstream      string
-	UpstreamIcon  string
-	UpstreamURL   string
-	UpstreamGone  bool
-	StashCount    int
-	WorktreeCount int
-	IsWorkTree    bool
-	RepoName      string
-}
-
 const (
 	// FetchStatus fetches the status of the repository
 	FetchStatus properties.Property = "fetch_status"
+	// IgnoreStatus allows to ignore certain repo's for status information
+	IgnoreStatus properties.Property = "ignore_status"
 	// FetchStashCount fetches the stash count
 	FetchStashCount properties.Property = "fetch_stash_count"
 	// FetchWorktreeCount fetches the worktree count
 	FetchWorktreeCount properties.Property = "fetch_worktree_count"
 	// FetchUpstreamIcon fetches the upstream icon
 	FetchUpstreamIcon properties.Property = "fetch_upstream_icon"
+	// FetchBareInfo fetches the bare repo status
+	FetchBareInfo properties.Property = "fetch_bare_info"
+	// FetchUser fetches the current user for the repo
+	FetchUser properties.Property = "fetch_user"
 
 	// BranchIcon the icon to use as branch indicator
 	BranchIcon properties.Property = "branch_icon"
@@ -89,6 +90,8 @@ const (
 	TagIcon properties.Property = "tag_icon"
 	// MergeIcon shows before the merge context
 	MergeIcon properties.Property = "merge_icon"
+	// UpstreamIcons allows to add custom upstream icons
+	UpstreamIcons properties.Property = "upstream_icons"
 	// GithubIcon shows√ when upstream is github
 	GithubIcon properties.Property = "github_icon"
 	// BitbucketIcon shows  when upstream is bitbucket
@@ -109,16 +112,66 @@ const (
 	GITCOMMAND   = "git"
 )
 
+type Git struct {
+	scm
+
+	Working        *GitStatus
+	Staging        *GitStatus
+	Ahead          int
+	Behind         int
+	HEAD           string
+	Ref            string
+	Hash           string
+	ShortHash      string
+	BranchStatus   string
+	Upstream       string
+	UpstreamIcon   string
+	UpstreamURL    string
+	RawUpstreamURL string
+	UpstreamGone   bool
+	IsWorkTree     bool
+	IsBare         bool
+	User           *User
+
+	// needed for posh-git support
+	poshgit       bool
+	stashCount    int
+	worktreeCount int
+
+	commit *Commit
+}
+
 func (g *Git) Template() string {
-	return " {{ .HEAD }} {{ .BranchStatus }}{{ if .Working.Changed }} \uF044 {{ .Working.String }}{{ end }}{{ if and (.Staging.Changed) (.Working.Changed) }} |{{ end }}{{ if .Staging.Changed }} \uF046 {{ .Staging.String }}{{ end }}{{ if gt .StashCount 0}} \uF692 {{ .StashCount }}{{ end }}{{ if gt .WorktreeCount 0}} \uf1bb {{ .WorktreeCount }}{{ end }} " // nolint: lll
+	return " {{ .HEAD }}{{if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }} \uF044 {{ .Working.String }}{{ end }}{{ if and (.Staging.Changed) (.Working.Changed) }} |{{ end }}{{ if .Staging.Changed }} \uF046 {{ .Staging.String }}{{ end }} " //nolint: lll
 }
 
 func (g *Git) Enabled() bool {
+	g.User = &User{}
+
 	if !g.shouldDisplay() {
 		return false
 	}
-	g.RepoName = environment.Base(g.env, g.realFolder)
+
+	fetchUser := g.props.GetBool(FetchUser, false)
+	if fetchUser {
+		g.setUser()
+	}
+
+	g.RepoName = platform.Base(g.env, g.convertToLinuxPath(g.realDir))
+
+	if g.IsBare {
+		g.getBareRepoInfo()
+		return true
+	}
+
+	if g.hasPoshGitStatus() {
+		return true
+	}
+
 	displayStatus := g.props.GetBool(FetchStatus, false)
+	if g.shouldIgnoreStatus() {
+		displayStatus = false
+	}
 	if displayStatus {
 		g.setGitStatus()
 		g.setGitHEADContext()
@@ -128,30 +181,93 @@ func (g *Git) Enabled() bool {
 		g.Working = &GitStatus{}
 		g.Staging = &GitStatus{}
 	}
-	if g.Upstream != "" && g.props.GetBool(FetchUpstreamIcon, false) {
+	if g.props.GetBool(FetchUpstreamIcon, false) {
 		g.UpstreamIcon = g.getUpstreamIcon()
-	}
-	if g.props.GetBool(FetchStashCount, false) {
-		g.StashCount = g.getStashContext()
-	}
-	if g.props.GetBool(FetchWorktreeCount, false) {
-		g.WorktreeCount = g.getWorktreeContext()
 	}
 	return true
 }
 
-func (g *Git) shouldDisplay() bool {
-	// when in wsl/wsl2 and in a windows shared folder
-	// we must use git.exe and convert paths accordingly
-	// for worktrees, stashes, and path to work
-	g.IsWslSharedPath = g.env.InWSLSharedDrive()
+func (g *Git) Commit() *Commit {
+	if g.commit != nil {
+		return g.commit
+	}
+	g.commit = &Commit{
+		Author:    &User{},
+		Committer: &User{},
+	}
+	commitBody := g.getGitCommandOutput("log", "-1", "--pretty=format:an:%an%nae:%ae%ncn:%cn%nce:%ce%nat:%at%nsu:%s")
+	splitted := strings.Split(strings.TrimSpace(commitBody), "\n")
+	for _, line := range splitted {
+		line = strings.TrimSpace(line)
+		if len(line) <= 3 {
+			continue
+		}
+		anchor := line[:3]
+		line = line[3:]
+		switch anchor {
+		case "an:":
+			g.commit.Author.Name = line
+		case "ae:":
+			g.commit.Author.Email = line
+		case "cn:":
+			g.commit.Committer.Name = line
+		case "ce:":
+			g.commit.Committer.Email = line
+		case "at:":
+			if t, err := strconv.ParseInt(line, 10, 64); err == nil {
+				g.commit.Timestamp = time.Unix(t, 0)
+			}
+		case "su:":
+			g.commit.Subject = line
+		}
+	}
+	return g.commit
+}
 
-	if !g.env.HasCommand(g.getCommand(GITCOMMAND)) {
+func (g *Git) StashCount() int {
+	if g.poshgit || g.stashCount != 0 {
+		return g.stashCount
+	}
+	stashContent := g.FileContents(g.rootDir, "logs/refs/stash")
+	if stashContent == "" {
+		return 0
+	}
+	lines := strings.Split(stashContent, "\n")
+	g.stashCount = len(lines)
+	return g.stashCount
+}
+
+func (g *Git) Kraken() string {
+	root := g.getGitCommandOutput("rev-list", "--max-parents=0", "HEAD")
+	if len(g.RawUpstreamURL) == 0 {
+		if len(g.Upstream) == 0 {
+			g.Upstream = "origin"
+		}
+		g.RawUpstreamURL = g.getRemoteURL()
+	}
+	if len(g.Hash) == 0 {
+		g.Hash = g.getGitCommandOutput("rev-parse", "HEAD")
+	}
+	return fmt.Sprintf("gitkraken://repolink/%s/commit/%s?url=%s", root, g.Hash, url2.QueryEscape(g.RawUpstreamURL))
+}
+
+func (g *Git) shouldDisplay() bool {
+	if !g.hasCommand(GITCOMMAND) {
 		return false
 	}
 
 	gitdir, err := g.env.HasParentFilePath(".git")
 	if err != nil {
+		if !g.props.GetBool(FetchBareInfo, false) {
+			return false
+		}
+		g.realDir = g.env.Pwd()
+		bare := g.getGitCommandOutput("rev-parse", "--is-bare-repository")
+		if bare == "true" {
+			g.IsBare = true
+			g.workingDir = g.realDir
+			return true
+		}
 		return false
 	}
 
@@ -159,110 +275,190 @@ func (g *Git) shouldDisplay() bool {
 		return false
 	}
 
+	g.setDir(gitdir.Path)
+
 	if !gitdir.IsDir {
 		return g.hasWorktree(gitdir)
 	}
 
-	g.workingFolder = gitdir.Path
-	g.rootFolder = gitdir.Path
-	// convert the worktree file path to a windows one when in wsl 2 shared folder
-	g.realFolder = strings.TrimSuffix(g.convertToWindowsPath(gitdir.Path), ".git")
+	g.workingDir = gitdir.Path
+	g.rootDir = gitdir.Path
+	// convert the worktree file path to a windows one when in a WSL shared folder
+	g.realDir = strings.TrimSuffix(g.convertToWindowsPath(gitdir.Path), "/.git")
 	return true
 }
 
-func (g *Git) hasWorktree(gitdir *environment.FileInfo) bool {
-	g.rootFolder = gitdir.Path
+func (g *Git) setUser() {
+	g.User.Name = g.getGitCommandOutput("config", "user.name")
+	g.User.Email = g.getGitCommandOutput("config", "user.email")
+}
+
+func (g *Git) getBareRepoInfo() {
+	head := g.FileContents(g.workingDir, "HEAD")
+	branchIcon := g.props.GetString(BranchIcon, "\uE0A0")
+	g.Ref = strings.Replace(head, "ref: refs/heads/", "", 1)
+	g.HEAD = fmt.Sprintf("%s%s", branchIcon, g.Ref)
+	if !g.props.GetBool(FetchUpstreamIcon, false) {
+		return
+	}
+	g.Upstream = g.getGitCommandOutput("remote")
+	if len(g.Upstream) != 0 {
+		g.UpstreamIcon = g.getUpstreamIcon()
+	}
+}
+
+func (g *Git) setDir(dir string) {
+	dir = platform.ReplaceHomeDirPrefixWithTilde(g.env, dir) // align with template PWD
+	if g.env.GOOS() == platform.WINDOWS {
+		g.Dir = strings.TrimSuffix(dir, `\.git`)
+		return
+	}
+	g.Dir = strings.TrimSuffix(dir, "/.git")
+}
+
+func (g *Git) hasWorktree(gitdir *platform.FileInfo) bool {
+	g.rootDir = gitdir.Path
 	dirPointer := strings.Trim(g.env.FileContent(gitdir.Path), " \r\n")
 	matches := regex.FindNamedRegexMatch(`^gitdir: (?P<dir>.*)$`, dirPointer)
 	if matches == nil || matches["dir"] == "" {
 		return false
 	}
-	// if we open a worktree file in a shared wsl2 folder, we have to convert it back
+	// if we open a worktree file in a WSL shared folder, we have to convert it back
 	// to the mounted path
-	g.workingFolder = g.convertToLinuxPath(matches["dir"])
+	g.workingDir = g.convertToLinuxPath(matches["dir"])
 
 	// in worktrees, the path looks like this: gitdir: path/.git/worktrees/branch
 	// strips the last .git/worktrees part
 	// :ind+5 = index + /.git
-	ind := strings.LastIndex(g.workingFolder, "/.git/worktrees")
+	ind := strings.LastIndex(g.workingDir, "/.git/worktrees")
 	if ind > -1 {
-		gitDir := filepath.Join(g.workingFolder, "gitdir")
-		g.rootFolder = g.workingFolder[:ind+5]
-		g.realFolder = strings.TrimSuffix(g.env.FileContent(gitDir), ".git\n")
+		gitDir := filepath.Join(g.workingDir, "gitdir")
+		g.rootDir = g.workingDir[:ind+5]
+		g.realDir = strings.TrimSuffix(g.env.FileContent(gitDir), ".git\n")
 		g.IsWorkTree = true
 		return true
 	}
 	// in submodules, the path looks like this: gitdir: ../.git/modules/test-submodule
 	// we need the parent folder to detect where the real .git folder is
-	ind = strings.LastIndex(g.workingFolder, "/.git/modules")
+	ind = strings.LastIndex(g.workingDir, "/.git/modules")
 	if ind > -1 {
-		g.rootFolder = filepath.Join(gitdir.ParentFolder, g.workingFolder)
+		g.rootDir = resolveGitPath(gitdir.ParentFolder, g.workingDir)
 		// this might be both a worktree and a submodule, where the path would look like
-		// this: ../.git/modules/module/path/worktrees/location. We cannot distinguish
+		// this: path/.git/modules/module/path/worktrees/location. We cannot distinguish
 		// between worktree and a module path containing the word 'worktree,' however.
-		ind = strings.LastIndex(g.rootFolder, g.env.PathSeparator()+"worktrees"+g.env.PathSeparator())
-		if ind > -1 && g.env.HasFilesInDir(g.rootFolder, "gitdir") {
-			gitDir := filepath.Join(g.rootFolder, "gitdir")
-			realGitFolder := filepath.Clean(g.env.FileContent(gitDir))
-			g.realFolder = strings.TrimSuffix(realGitFolder, ".git\n")
-			g.rootFolder = g.rootFolder[:ind]
-			g.workingFolder = g.rootFolder
+		ind = strings.LastIndex(g.rootDir, "/worktrees/")
+		if ind > -1 && g.env.HasFilesInDir(g.rootDir, "gitdir") {
+			gitDir := filepath.Join(g.rootDir, "gitdir")
+			realGitFolder := g.env.FileContent(gitDir)
+			g.realDir = strings.TrimSuffix(realGitFolder, ".git\n")
+			g.rootDir = g.rootDir[:ind]
+			g.workingDir = g.rootDir
 			g.IsWorkTree = true
 			return true
 		}
-		g.realFolder = g.rootFolder
-		g.workingFolder = g.rootFolder
+		g.realDir = g.rootDir
+		g.workingDir = g.rootDir
 		return true
 	}
 
 	// check for separate git folder(--separate-git-dir)
 	// check if the folder contains a HEAD file
-	if g.env.HasFilesInDir(g.workingFolder, "HEAD") {
-		gitFolder := strings.TrimSuffix(g.rootFolder, ".git")
-		g.rootFolder = g.workingFolder
-		g.workingFolder = gitFolder
-		g.realFolder = gitFolder
+	if g.env.HasFilesInDir(g.workingDir, "HEAD") {
+		gitFolder := strings.TrimSuffix(g.rootDir, ".git")
+		g.rootDir = g.workingDir
+		g.workingDir = gitFolder
+		g.realDir = gitFolder
 		return true
 	}
 	return false
 }
 
+func (g *Git) shouldIgnoreStatus() bool {
+	list := g.props.GetStringArray(IgnoreStatus, []string{})
+	return g.env.DirMatchesOneOf(g.realDir, list)
+}
+
 func (g *Git) setBranchStatus() {
 	getBranchStatus := func() string {
 		if g.Ahead > 0 && g.Behind > 0 {
-			return fmt.Sprintf(" %s%d %s%d", g.props.GetString(BranchAheadIcon, "\u2191"), g.Ahead, g.props.GetString(BranchBehindIcon, "\u2193"), g.Behind)
+			return fmt.Sprintf("%s%d %s%d", g.props.GetString(BranchAheadIcon, "\u2191"), g.Ahead, g.props.GetString(BranchBehindIcon, "\u2193"), g.Behind)
 		}
 		if g.Ahead > 0 {
-			return fmt.Sprintf(" %s%d", g.props.GetString(BranchAheadIcon, "\u2191"), g.Ahead)
+			return fmt.Sprintf("%s%d", g.props.GetString(BranchAheadIcon, "\u2191"), g.Ahead)
 		}
 		if g.Behind > 0 {
-			return fmt.Sprintf(" %s%d", g.props.GetString(BranchBehindIcon, "\u2193"), g.Behind)
+			return fmt.Sprintf("%s%d", g.props.GetString(BranchBehindIcon, "\u2193"), g.Behind)
 		}
 		if g.UpstreamGone {
-			return fmt.Sprintf(" %s", g.props.GetString(BranchGoneIcon, "\u2262"))
+			return g.props.GetString(BranchGoneIcon, "\u2262")
 		}
 		if g.Behind == 0 && g.Ahead == 0 && g.Upstream != "" {
-			return fmt.Sprintf(" %s", g.props.GetString(BranchIdenticalIcon, "\u2261"))
+			return g.props.GetString(BranchIdenticalIcon, "\u2261")
 		}
 		return ""
 	}
 	g.BranchStatus = getBranchStatus()
 }
 
+func (g *Git) cleanUpstreamURL(url string) string {
+	if strings.HasPrefix(url, "http") {
+		return url
+	}
+	// /path/to/repo.git/
+	match := regex.FindNamedRegexMatch(`^(?P<URL>[a-z0-9./]+)$`, url)
+	if len(match) != 0 {
+		url := strings.Trim(match["URL"], "/")
+		url = strings.TrimSuffix(url, ".git")
+		return fmt.Sprintf("https://%s", strings.TrimPrefix(url, "/"))
+	}
+	// ssh://user@host.xz:1234/path/to/repo.git/
+	match = regex.FindNamedRegexMatch(`(ssh|ftp|git|rsync)://(.*@)?(?P<URL>[a-z0-9.]+)(:[0-9]{4})?/(?P<PATH>.*).git`, url)
+	if len(match) == 0 {
+		// host.xz:/path/to/repo.git/
+		match = regex.FindNamedRegexMatch(`^(?P<URL>[a-z0-9./]+):(?P<PATH>[a-z0-9./]+)$`, url)
+	}
+	if len(match) != 0 {
+		path := strings.Trim(match["PATH"], "/")
+		path = strings.TrimSuffix(path, ".git")
+		return fmt.Sprintf("https://%s/%s", match["URL"], path)
+	}
+	// user@host.xz:/path/to/repo.git
+	match = regex.FindNamedRegexMatch(`.*@(?P<URL>.*):(?P<PATH>.*).git`, url)
+	if len(match) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("https://%s/%s", match["URL"], match["PATH"])
+}
+
 func (g *Git) getUpstreamIcon() string {
-	upstream := regex.ReplaceAllString("/.*", g.Upstream, "")
-	g.UpstreamURL = g.getOriginURL(upstream)
-	if strings.Contains(g.UpstreamURL, "github") {
-		return g.props.GetString(GithubIcon, "\uF408 ")
+	g.RawUpstreamURL = g.getRemoteURL()
+	if len(g.RawUpstreamURL) == 0 {
+		return ""
 	}
-	if strings.Contains(g.UpstreamURL, "gitlab") {
-		return g.props.GetString(GitlabIcon, "\uF296 ")
+	g.UpstreamURL = g.cleanUpstreamURL(g.RawUpstreamURL)
+
+	// allow overrides first
+	custom := g.props.GetKeyValueMap(UpstreamIcons, map[string]string{})
+	for key, value := range custom {
+		if strings.Contains(g.UpstreamURL, key) {
+			return value
+		}
 	}
-	if strings.Contains(g.UpstreamURL, "bitbucket") {
-		return g.props.GetString(BitbucketIcon, "\uF171 ")
+
+	defaults := map[string]struct {
+		Icon    properties.Property
+		Default string
+	}{
+		"github":           {GithubIcon, "\uF408 "},
+		"gitlab":           {GitlabIcon, "\uF296 "},
+		"bitbucket":        {BitbucketIcon, "\uF171 "},
+		"dev.azure.com":    {AzureDevOpsIcon, "\uEBE8 "},
+		"visualstudio.com": {AzureDevOpsIcon, "\uEBE8 "},
 	}
-	if strings.Contains(g.UpstreamURL, "dev.azure.com") || strings.Contains(g.UpstreamURL, "visualstudio.com") {
-		return g.props.GetString(AzureDevOpsIcon, "\uFD03 ")
+	for key, value := range defaults {
+		if strings.Contains(g.UpstreamURL, key) {
+			return g.props.GetString(value.Icon, value.Default)
+		}
 	}
 	return g.props.GetString(GitIcon, "\uE5FB ")
 }
@@ -290,8 +486,9 @@ func (g *Git) setGitStatus() {
 	)
 	// firstly assume that upstream is gone
 	g.UpstreamGone = true
-	g.Working = &GitStatus{}
-	g.Staging = &GitStatus{}
+	statusFormats := g.props.GetKeyValueMap(StatusFormats, map[string]string{})
+	g.Working = &GitStatus{ScmStatus: ScmStatus{Formats: statusFormats}}
+	g.Staging = &GitStatus{ScmStatus: ScmStatus{Formats: statusFormats}}
 	untrackedMode := g.getUntrackedFilesMode()
 	args := []string{"status", untrackedMode, "--branch", "--porcelain=2"}
 	ignoreSubmodulesMode := g.getIgnoreSubmodulesMode()
@@ -301,7 +498,8 @@ func (g *Git) setGitStatus() {
 	output := g.getGitCommandOutput(args...)
 	for _, line := range strings.Split(output, "\n") {
 		if strings.HasPrefix(line, HASH) && len(line) >= len(HASH)+7 {
-			g.Hash = line[len(HASH) : len(HASH)+7]
+			g.ShortHash = line[len(HASH) : len(HASH)+7]
+			g.Hash = line[len(HASH):]
 			continue
 		}
 		if strings.HasPrefix(line, REF) && len(line) > len(REF) {
@@ -331,8 +529,8 @@ func (g *Git) setGitStatus() {
 }
 
 func (g *Git) getGitCommandOutput(args ...string) string {
-	args = append([]string{"-C", g.realFolder, "--no-optional-locks", "-c", "core.quotepath=false", "-c", "color.status=false"}, args...)
-	val, err := g.env.RunCommand(g.getCommand(GITCOMMAND), args...)
+	args = append([]string{"-C", g.realDir, "--no-optional-locks", "-c", "core.quotepath=false", "-c", "color.status=false"}, args...)
+	val, err := g.env.RunCommand(g.command, args...)
 	if err != nil {
 		return ""
 	}
@@ -357,7 +555,7 @@ func (g *Git) setGitHEADContext() {
 
 	getPrettyNameOrigin := func(file string) string {
 		var origin string
-		head := g.FileContents(g.workingFolder, file)
+		head := g.FileContents(g.workingDir, file)
 		if head == "detached HEAD" {
 			origin = formatDetached()
 		} else {
@@ -367,20 +565,20 @@ func (g *Git) setGitHEADContext() {
 		return origin
 	}
 
-	if g.env.HasFolder(g.workingFolder + "/rebase-merge") {
+	if g.env.HasFolder(g.workingDir + "/rebase-merge") {
 		origin := getPrettyNameOrigin("rebase-merge/head-name")
 		onto := g.getGitRefFileSymbolicName("rebase-merge/onto")
 		onto = g.formatHEAD(onto)
-		step := g.FileContents(g.workingFolder, "rebase-merge/msgnum")
-		total := g.FileContents(g.workingFolder, "rebase-merge/end")
+		step := g.FileContents(g.workingDir, "rebase-merge/msgnum")
+		total := g.FileContents(g.workingDir, "rebase-merge/end")
 		icon := g.props.GetString(RebaseIcon, "\uE728 ")
 		g.HEAD = fmt.Sprintf("%s%s onto %s%s (%s/%s) at %s", icon, origin, branchIcon, onto, step, total, g.HEAD)
 		return
 	}
-	if g.env.HasFolder(g.workingFolder + "/rebase-apply") {
+	if g.env.HasFolder(g.workingDir + "/rebase-apply") {
 		origin := getPrettyNameOrigin("rebase-apply/head-name")
-		step := g.FileContents(g.workingFolder, "rebase-apply/next")
-		total := g.FileContents(g.workingFolder, "rebase-apply/last")
+		step := g.FileContents(g.workingDir, "rebase-apply/next")
+		total := g.FileContents(g.workingDir, "rebase-apply/last")
 		icon := g.props.GetString(RebaseIcon, "\uE728 ")
 		g.HEAD = fmt.Sprintf("%s%s (%s/%s) at %s", icon, origin, step, total, g.HEAD)
 		return
@@ -389,7 +587,7 @@ func (g *Git) setGitHEADContext() {
 	commitIcon := g.props.GetString(CommitIcon, "\uF417")
 	if g.hasGitFile("MERGE_MSG") {
 		icon := g.props.GetString(MergeIcon, "\uE727 ")
-		mergeContext := g.FileContents(g.workingFolder, "MERGE_MSG")
+		mergeContext := g.FileContents(g.workingDir, "MERGE_MSG")
 		matches := regex.FindNamedRegexMatch(`Merge (remote-tracking )?(?P<type>branch|commit|tag) '(?P<theirs>.*)'`, mergeContext)
 		// head := g.getGitRefFileSymbolicName("ORIG_HEAD")
 		if matches != nil && matches["theirs"] != "" {
@@ -415,19 +613,19 @@ func (g *Git) setGitHEADContext() {
 	// reverts then CHERRY_PICK_HEAD/REVERT_HEAD will not exist so we have to read
 	// the todo file.
 	if g.hasGitFile("CHERRY_PICK_HEAD") {
-		sha := g.FileContents(g.workingFolder, "CHERRY_PICK_HEAD")
+		sha := g.FileContents(g.workingDir, "CHERRY_PICK_HEAD")
 		cherry := g.props.GetString(CherryPickIcon, "\uE29B ")
 		g.HEAD = fmt.Sprintf("%s%s%s onto %s", cherry, commitIcon, g.formatSHA(sha), formatDetached())
 		return
 	}
 	if g.hasGitFile("REVERT_HEAD") {
-		sha := g.FileContents(g.workingFolder, "REVERT_HEAD")
+		sha := g.FileContents(g.workingDir, "REVERT_HEAD")
 		revert := g.props.GetString(RevertIcon, "\uF0E2 ")
 		g.HEAD = fmt.Sprintf("%s%s%s onto %s", revert, commitIcon, g.formatSHA(sha), formatDetached())
 		return
 	}
 	if g.hasGitFile("sequencer/todo") {
-		todo := g.FileContents(g.workingFolder, "sequencer/todo")
+		todo := g.FileContents(g.workingDir, "sequencer/todo")
 		matches := regex.FindNamedRegexMatch(`^(?P<action>p|pick|revert)\s+(?P<sha>\S+)`, todo)
 		if matches != nil && matches["sha"] != "" {
 			action := matches["action"]
@@ -464,18 +662,18 @@ func (g *Git) formatSHA(sha string) string {
 }
 
 func (g *Git) hasGitFile(file string) bool {
-	return g.env.HasFilesInDir(g.workingFolder, file)
+	return g.env.HasFilesInDir(g.workingDir, file)
 }
 
 func (g *Git) getGitRefFileSymbolicName(refFile string) string {
-	ref := g.FileContents(g.workingFolder, refFile)
+	ref := g.FileContents(g.workingDir, refFile)
 	return g.getGitCommandOutput("name-rev", "--name-only", "--exclude=tags/*", ref)
 }
 
 func (g *Git) setPrettyHEADName() {
 	// we didn't fetch status, fallback to parsing the HEAD file
-	if len(g.Hash) == 0 {
-		HEADRef := g.FileContents(g.workingFolder, "HEAD")
+	if len(g.ShortHash) == 0 {
+		HEADRef := g.FileContents(g.workingDir, "HEAD")
 		if strings.HasPrefix(HEADRef, BRANCHPREFIX) {
 			branchName := strings.TrimPrefix(HEADRef, BRANCHPREFIX)
 			g.HEAD = fmt.Sprintf("%s%s", g.props.GetString(BranchIcon, "\uE0A0"), g.formatHEAD(branchName))
@@ -483,7 +681,8 @@ func (g *Git) setPrettyHEADName() {
 		}
 		// no branch, points to commit
 		if len(HEADRef) >= 7 {
-			g.Hash = HEADRef[0:7]
+			g.ShortHash = HEADRef[0:7]
+			g.Hash = HEADRef[0:]
 		}
 	}
 	// check for tag
@@ -493,27 +692,21 @@ func (g *Git) setPrettyHEADName() {
 		return
 	}
 	// fallback to commit
-	if len(g.Hash) == 0 {
+	if len(g.ShortHash) == 0 {
 		g.HEAD = g.props.GetString(NoCommitsIcon, "\uF594 ")
 		return
 	}
-	g.HEAD = fmt.Sprintf("%s%s", g.props.GetString(CommitIcon, "\uF417"), g.Hash)
+	g.HEAD = fmt.Sprintf("%s%s", g.props.GetString(CommitIcon, "\uF417"), g.ShortHash)
 }
 
-func (g *Git) getStashContext() int {
-	stashContent := g.FileContents(g.rootFolder, "logs/refs/stash")
-	if stashContent == "" {
+func (g *Git) WorktreeCount() int {
+	if g.worktreeCount > 0 {
+		return g.worktreeCount
+	}
+	if !g.env.HasFolder(g.rootDir + "/worktrees") {
 		return 0
 	}
-	lines := strings.Split(stashContent, "\n")
-	return len(lines)
-}
-
-func (g *Git) getWorktreeContext() int {
-	if !g.env.HasFolder(g.rootFolder + "/worktrees") {
-		return 0
-	}
-	worktreeFolders := g.env.LsDir(g.rootFolder + "/worktrees")
+	worktreeFolders := g.env.LsDir(g.rootDir + "/worktrees")
 	var count int
 	for _, folder := range worktreeFolders {
 		if folder.IsDir() {
@@ -523,28 +716,20 @@ func (g *Git) getWorktreeContext() int {
 	return count
 }
 
-func (g *Git) getOriginURL(upstream string) string {
-	cleanSSHURL := func(url string) string {
-		if strings.HasPrefix(url, "http") {
-			return url
-		}
-		url = strings.TrimPrefix(url, "git://")
-		url = strings.TrimPrefix(url, "git@")
-		url = strings.TrimSuffix(url, ".git")
-		url = strings.ReplaceAll(url, ":", "/")
-		return fmt.Sprintf("https://%s", url)
+func (g *Git) getRemoteURL() string {
+	upstream := regex.ReplaceAllString("/.*", g.Upstream, "")
+	if len(upstream) == 0 {
+		upstream = "origin"
 	}
-	var url string
-	cfg, err := ini.Load(g.rootFolder + "/config")
+	cfg, err := ini.Load(g.rootDir + "/config")
 	if err != nil {
-		url = g.getGitCommandOutput("remote", "get-url", upstream)
-		return cleanSSHURL(url)
+		return g.getGitCommandOutput("remote", "get-url", upstream)
 	}
-	url = cfg.Section("remote \"" + upstream + "\"").Key("url").String()
-	if url == "" {
-		url = g.getGitCommandOutput("remote", "get-url", upstream)
+	url := cfg.Section("remote \"" + upstream + "\"").Key("url").String()
+	if len(url) != 0 {
+		return url
 	}
-	return cleanSSHURL(url)
+	return g.getGitCommandOutput("remote", "get-url", upstream)
 }
 
 func (g *Git) getUntrackedFilesMode() string {
@@ -562,7 +747,7 @@ func (g *Git) getSwitchMode(property properties.Property, gitSwitch, mode string
 		mode = val
 	}
 	// get the specific repo mode
-	if val := repoModes[g.realFolder]; len(val) != 0 {
+	if val := repoModes[g.realDir]; len(val) != 0 {
 		mode = val
 	}
 	if len(mode) == 0 {

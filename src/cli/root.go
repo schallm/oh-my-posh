@@ -3,19 +3,18 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strings"
 
+	"github.com/jandedobbeleer/oh-my-posh/src/build"
 	"github.com/spf13/cobra"
 )
 
 var (
 	config         string
 	displayVersion bool
-
-	// Version number of oh-my-posh
-	cliVersion string
 )
 
-var rootCmd = &cobra.Command{
+var RootCmd = &cobra.Command{
 	Use:   "oh-my-posh",
 	Short: "oh-my-posh is a tool to render your prompt",
 	Long: `oh-my-posh is a cross platform tool to render your prompt.
@@ -24,20 +23,19 @@ experience, regardless of where you are. For a detailed guide
 on getting started, have a look at the docs at https://ohmyposh.dev`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if initialize {
-			runInit(shellName)
+			runInit(strings.ToLower(shellName))
 			return
 		}
 		if displayVersion {
-			fmt.Println(cliVersion)
+			fmt.Println(build.Version)
 			return
 		}
 		_ = cmd.Help()
 	},
 }
 
-func Execute(version string) {
-	cliVersion = version
-	if err := rootCmd.Execute(); err != nil {
+func Execute() {
+	if err := RootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
@@ -48,9 +46,9 @@ var (
 	initialize bool
 )
 
-func init() { // nolint:gochecknoinits
-	rootCmd.PersistentFlags().StringVarP(&config, "config", "c", "", "config (required)")
-	rootCmd.Flags().BoolVarP(&initialize, "init", "i", false, "init (deprecated)")
-	rootCmd.Flags().BoolVar(&displayVersion, "version", false, "version")
-	rootCmd.Flags().StringVarP(&shellName, "shell", "s", "", "shell (deprecated)")
+func init() { //nolint:gochecknoinits
+	RootCmd.PersistentFlags().StringVarP(&config, "config", "c", "", "config file path")
+	RootCmd.Flags().BoolVarP(&initialize, "init", "i", false, "init (deprecated)")
+	RootCmd.Flags().BoolVar(&displayVersion, "version", false, "version")
+	RootCmd.Flags().StringVarP(&shellName, "shell", "s", "", "shell (deprecated)")
 }

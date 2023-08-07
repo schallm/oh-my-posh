@@ -2,13 +2,14 @@ package segments
 
 import (
 	"encoding/json"
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Ytm struct {
 	props properties.Properties
-	env   environment.Environment
+	env   platform.Environment
 
 	MusicPlayer
 }
@@ -29,7 +30,7 @@ func (y *Ytm) Enabled() bool {
 	return err == nil
 }
 
-func (y *Ytm) Init(props properties.Properties, env environment.Environment) {
+func (y *Ytm) Init(props properties.Properties, env platform.Environment) {
 	y.props = props
 	y.env = env
 }

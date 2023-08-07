@@ -2,14 +2,20 @@ package segments
 
 import (
 	"io/fs"
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
 	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 
 	"github.com/alecthomas/assert"
 
 	testify_mock "github.com/stretchr/testify/mock"
+)
+
+const (
+	hasFiles = "HasFiles"
 )
 
 type MockDirEntry struct {
@@ -150,19 +156,21 @@ func TestPackage(t *testing.T) {
 		},
 		{
 			Case:            "Empty project package node.js",
-			ExpectedEnabled: false,
+			ExpectedEnabled: true,
 			Name:            "node",
 			File:            "package.json",
 			PackageContents: "{}",
 		},
 		{
 			Case:            "Empty project package cargo",
+			ExpectedEnabled: true,
 			Name:            "cargo",
 			File:            "Cargo.toml",
 			PackageContents: "",
 		},
 		{
 			Case:            "Empty project package poetry",
+			ExpectedEnabled: true,
 			Name:            "poetry",
 			File:            "pyproject.toml",
 			PackageContents: "",
@@ -181,13 +189,44 @@ func TestPackage(t *testing.T) {
 			File:            "Cargo.toml",
 			PackageContents: "[",
 		},
+		{
+			Case:            "Julia project",
+			ExpectedEnabled: true,
+			ExpectedString:  "\uf487 0.1.0 ProjectEuler",
+			Name:            "julia",
+			File:            "JuliaProject.toml",
+			PackageContents: "name = \"ProjectEuler\"\nversion = \"0.1.0\"",
+		},
+		{
+			Case:            "Julia project no name",
+			ExpectedEnabled: true,
+			ExpectedString:  "\uf487 0.1.0",
+			Name:            "julia",
+			File:            "JuliaProject.toml",
+			PackageContents: "version = \"0.1.0\"",
+		},
+		{
+			Case:            "Julia project no version",
+			ExpectedEnabled: true,
+			ExpectedString:  "ProjectEuler",
+			Name:            "julia",
+			File:            "JuliaProject.toml",
+			PackageContents: "name = \"ProjectEuler\"",
+		},
+		{
+			Case:            "Julia project invalid toml",
+			ExpectedString:  "toml: line 1: unexpected end of table name (table names cannot be empty)",
+			Name:            "julia",
+			File:            "JuliaProject.toml",
+			PackageContents: "[",
+		},
 	}
 
 	for _, tc := range cases {
 		env := new(mock.MockedEnvironment)
-		env.On("HasFiles", testify_mock.Anything).Run(func(args testify_mock.Arguments) {
+		env.On(hasFiles, testify_mock.Anything).Run(func(args testify_mock.Arguments) {
 			for _, c := range env.ExpectedCalls {
-				if c.Method == "HasFiles" {
+				if c.Method == hasFiles {
 					c.ReturnArguments = testify_mock.Arguments{args.Get(0).(string) == tc.File}
 				}
 			}
@@ -227,7 +266,7 @@ func TestNuspecPackage(t *testing.T) {
 			Case:            "no info in file",
 			FileName:        "../test/empty.nuspec",
 			HasFiles:        true,
-			ExpectedEnabled: false,
+			ExpectedEnabled: true,
 		},
 		{
 			Case:            "no files",
@@ -238,9 +277,9 @@ func TestNuspecPackage(t *testing.T) {
 
 	for _, tc := range cases {
 		env := new(mock.MockedEnvironment)
-		env.On("HasFiles", testify_mock.Anything).Run(func(args testify_mock.Arguments) {
+		env.On(hasFiles, testify_mock.Anything).Run(func(args testify_mock.Arguments) {
 			for _, c := range env.ExpectedCalls {
-				if c.Method != "HasFiles" {
+				if c.Method != hasFiles {
 					continue
 				}
 				if args.Get(0).(string) == "*.nuspec" {
@@ -258,6 +297,124 @@ func TestNuspecPackage(t *testing.T) {
 		})
 		content, _ := os.ReadFile(tc.FileName)
 		env.On("FileContent", tc.FileName).Return(string(content))
+		pkg := &Project{}
+		pkg.Init(properties.Map{}, env)
+		assert.Equal(t, tc.ExpectedEnabled, pkg.Enabled(), tc.Case)
+		if tc.ExpectedEnabled {
+			assert.Equal(t, tc.ExpectedString, renderTemplate(env, pkg.Template(), pkg), tc.Case)
+		}
+	}
+}
+
+func TestDotnetProject(t *testing.T) {
+	cases := []struct {
+		Case            string
+		FileName        string
+		HasFiles        bool
+		ProjectContents string
+		ExpectedString  string
+		ExpectedEnabled bool
+	}{
+		{
+			Case:            "valid .csproj file",
+			FileName:        "Valid.csproj",
+			HasFiles:        true,
+			ProjectContents: "...<TargetFramework>net7.0</TargetFramework>...",
+			ExpectedEnabled: true,
+			ExpectedString:  "Valid \uf4de net7.0",
+		},
+		{
+			Case:            "valid .fsproj file",
+			FileName:        "Valid.fsproj",
+			HasFiles:        true,
+			ProjectContents: "...<TargetFramework>net6.0</TargetFramework>...",
+			ExpectedEnabled: true,
+			ExpectedString:  "Valid \uf4de net6.0",
+		},
+		{
+			Case:            "valid .vbproj file",
+			FileName:        "Valid.vbproj",
+			HasFiles:        true,
+			ProjectContents: "...<TargetFramework>net5.0</TargetFramework>...",
+			ExpectedEnabled: true,
+			ExpectedString:  "Valid \uf4de net5.0",
+		},
+		{
+			Case:            "invalid or empty contents",
+			FileName:        "Invalid.csproj",
+			HasFiles:        true,
+			ExpectedEnabled: false,
+			ExpectedString:  "cannot extract TFM from Invalid project file",
+		},
+		{
+			Case:            "no files",
+			HasFiles:        false,
+			ExpectedEnabled: false,
+		},
+	}
+
+	for _, tc := range cases {
+		env := new(mock.MockedEnvironment)
+		env.On(hasFiles, testify_mock.Anything).Run(func(args testify_mock.Arguments) {
+			for _, c := range env.ExpectedCalls {
+				if c.Method == hasFiles {
+					pattern := "*" + filepath.Ext(tc.FileName)
+					c.ReturnArguments = testify_mock.Arguments{args.Get(0).(string) == pattern}
+				}
+			}
+		})
+		env.On("Pwd").Return("posh")
+		env.On("LsDir", "posh").Return([]fs.DirEntry{
+			&MockDirEntry{
+				name: tc.FileName,
+			},
+		})
+		env.On("FileContent", tc.FileName).Return(tc.ProjectContents)
+		pkg := &Project{}
+		pkg.Init(properties.Map{}, env)
+		assert.Equal(t, tc.ExpectedEnabled, pkg.Enabled(), tc.Case)
+		if tc.ExpectedEnabled {
+			assert.Equal(t, tc.ExpectedString, renderTemplate(env, pkg.Template(), pkg), tc.Case)
+		}
+	}
+}
+
+func TestPowerShellModuleProject(t *testing.T) {
+	cases := []struct {
+		Case            string
+		HasFiles        bool
+		ExpectedString  string
+		ExpectedEnabled bool
+	}{
+		{
+			Case:            "valid PowerShell module file",
+			HasFiles:        true,
+			ExpectedEnabled: true,
+			ExpectedString:  "\uf487 1.0.0.0 oh-my-posh",
+		},
+	}
+
+	for _, tc := range cases {
+		env := new(mock.MockedEnvironment)
+		env.On(hasFiles, testify_mock.Anything).Run(func(args testify_mock.Arguments) {
+			for _, c := range env.ExpectedCalls {
+				if c.Method == hasFiles {
+					c.ReturnArguments = testify_mock.Arguments{args.Get(0).(string) == "*.psd1"}
+				}
+			}
+		})
+		env.On("Pwd").Return("posh")
+		env.On("LsDir", "posh").Return([]fs.DirEntry{
+			&MockDirEntry{
+				name: "oh-my-posh.psd1",
+			},
+		})
+		var moduleContent string
+		if tc.HasFiles {
+			content, _ := os.ReadFile("../test/oh-my-posh.psd1")
+			moduleContent = string(content)
+		}
+		env.On("FileContent", "oh-my-posh.psd1").Return(moduleContent)
 		pkg := &Project{}
 		pkg.Init(properties.Map{}, env)
 		assert.Equal(t, tc.ExpectedEnabled, pkg.Enabled(), tc.Case)

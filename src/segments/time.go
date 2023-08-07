@@ -1,14 +1,15 @@
 package segments
 
 import (
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
 	"time"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Time struct {
 	props properties.Properties
-	env   environment.Environment
+	env   platform.Environment
 
 	CurrentDate time.Time
 	Format      string
@@ -32,7 +33,7 @@ func (t *Time) Enabled() bool {
 	return true
 }
 
-func (t *Time) Init(props properties.Properties, env environment.Environment) {
+func (t *Time) Init(props properties.Properties, env platform.Environment) {
 	t.props = props
 	t.env = env
 }

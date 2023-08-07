@@ -1,8 +1,8 @@
 package segments
 
 import (
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Cf struct {
@@ -13,7 +13,7 @@ func (c *Cf) Template() string {
 	return languageTemplate
 }
 
-func (c *Cf) Init(props properties.Properties, env environment.Environment) {
+func (c *Cf) Init(props properties.Properties, env platform.Environment) {
 	c.language = language{
 		env:        env,
 		props:      props,

@@ -31,6 +31,7 @@ starting point to create your own configuration.
 {
   "$schema": "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json",
   "final_space": true,
+  "version": 2,
   "blocks": [
     {
       "type": "prompt",
@@ -58,6 +59,7 @@ starting point to create your own configuration.
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json
 final_space: true
+version: 2
 blocks:
   - type: prompt
     alignment: left
@@ -77,6 +79,7 @@ blocks:
 ```toml
 "$schema" = "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json"
 final_space = true
+version = 2
 
 [[blocks]]
 type = "prompt"
@@ -123,11 +126,15 @@ For example, the following is a valid `--config` flag:
 
 ## General Settings
 
-- final_space: `boolean` - when true adds a space at the end of the prompt
-- pwd: `string` - notify terminal of current working directory, values can be `osc99` or `osc7` depending on your terminal
-- terminal_background: `string` [color][colors] - terminal background color, set to your terminal's background color when
-  you notice black elements in Windows Terminal or the Visual Studio Code integrated terminal
-- accent_color: `string` [color][colors] - accent color, used as a fallback when the `accent` [color][accent] is not supported
+| Name                         | Type             | Description                                                                                                                                                                           |
+| ---------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `final_space`                | `boolean`        | when true adds a space at the end of the prompt                                                                                                                                       |
+| `pwd`                        | `string`         | notify terminal of current working directory, values can be `osc99`, `osc7`, or `osc51` depending on your terminal                                                                    |
+| `terminal_background`        | `string`         | [color][colors] - terminal background color, set to your terminal's background color when you notice black elements in Windows Terminal or the Visual Studio Code integrated terminal |
+| `accent_color`               | `string`         | [color][colors] - accent color, used as a fallback when the `accent` [color][accent] is not supported                                                                                 |
+| `var`                        | `map[string]any` | config variables to use in [templates][templates]. Can be any value                                                                                                                   |
+| `shell_integration`          | `boolean`        | enable shell integration using FinalTerm's OSC sequences. Works in bash, cmd (Clink v1.14.25+), fish, powershell and zsh                                                              |
+| `disable_cursor_positioning` | `boolean`        | disable fetching the cursor position in bash and zsh in case of unwanted side-effects                                                                                                 |
 
 ### JSON Schema Validation
 
@@ -157,7 +164,7 @@ warnings, and ignore them at your peril.
 
 Oh My Posh supports three file formats for themes: `json`, `yaml`, and `toml`.
 
-Various converters exist to convert between these, although they aren't perfect and will require manaual
+Various converters exist to convert between these, although they aren't perfect and will require manual
 adjustment. Notably, the schema implementation for json is as follows:
 
 ```json
@@ -180,3 +187,4 @@ Converters won't catch this change, so you will need to adjust manually.
 [themes]: https://github.com/JanDeDobbeleer/oh-my-posh/tree/main/themes
 [colors]: /docs/configuration/colors
 [accent]: /docs/configuration/colors#standard-colors
+[templates]: /docs/configuration/templates#config-variables

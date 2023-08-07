@@ -1,8 +1,8 @@
 package segments
 
 import (
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 const UI5ToolingYamlPattern = "*ui5*.y*ml"
@@ -16,7 +16,7 @@ func (u *UI5Tooling) Template() string {
 	return languageTemplate
 }
 
-func (u *UI5Tooling) Init(props properties.Properties, env environment.Environment) {
+func (u *UI5Tooling) Init(props properties.Properties, env platform.Environment) {
 	u.language = language{
 		env:         env,
 		props:       props,

@@ -3,9 +3,10 @@ package segments
 import (
 	"encoding/json"
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
 	"path/filepath"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Nx struct {
@@ -16,11 +17,11 @@ func (a *Nx) Template() string {
 	return languageTemplate
 }
 
-func (a *Nx) Init(props properties.Properties, env environment.Environment) {
+func (a *Nx) Init(props properties.Properties, env platform.Environment) {
 	a.language = language{
 		env:        env,
 		props:      props,
-		extensions: []string{"workspace.json"},
+		extensions: []string{"workspace.json", "nx.json"},
 		commands: []*cmd{
 			{
 				regex:      `(?:(?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+))))`,
@@ -39,7 +40,7 @@ func (a *Nx) getVersion() (string, error) {
 	return getNodePackageVersion(a.language.env, "nx")
 }
 
-func getNodePackageVersion(env environment.Environment, nodePackage string) (string, error) {
+func getNodePackageVersion(env platform.Environment, nodePackage string) (string, error) {
 	const fileName string = "package.json"
 	folder := filepath.Join(env.Pwd(), "node_modules", nodePackage)
 	if !env.HasFilesInDir(folder, fileName) {

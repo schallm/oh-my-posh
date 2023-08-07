@@ -1,9 +1,9 @@
 package segments
 
 import (
-	"oh-my-posh/constants"
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/constants"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Dotnet struct {
@@ -16,7 +16,7 @@ func (d *Dotnet) Template() string {
 	return " {{ if .Unsupported }}\uf071{{ else }}{{ .Full }}{{ end }} "
 }
 
-func (d *Dotnet) Init(props properties.Properties, env environment.Environment) {
+func (d *Dotnet) Init(props properties.Properties, env platform.Environment) {
 	d.language = language{
 		env:        env,
 		props:      props,
@@ -29,7 +29,7 @@ func (d *Dotnet) Init(props properties.Properties, env environment.Environment) 
 					`(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?))`,
 			},
 		},
-		versionURLTemplate: "https://github.com/dotnet/core/blob/master/release-notes/{{ .Major }}.{{ .Minor }}/{{ .Major }}.{{ .Minor }}.{{ substr 0 1 .Patch }}/{{ .Major }}.{{ .Minor }}.{{ substr 0 1 .Patch }}.md", // nolint: lll
+		versionURLTemplate: "https://github.com/dotnet/core/blob/master/release-notes/{{ .Major }}.{{ .Minor }}/{{ .Major }}.{{ .Minor }}.{{ substr 0 1 .Patch }}/{{ .Major }}.{{ .Minor }}.{{ substr 0 1 .Patch }}.md", //nolint: lll
 	}
 }
 

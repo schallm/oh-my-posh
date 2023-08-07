@@ -2,8 +2,9 @@ package segments
 
 import (
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Java struct {
@@ -14,7 +15,7 @@ func (j *Java) Template() string {
 	return languageTemplate
 }
 
-func (j *Java) Init(props properties.Properties, env environment.Environment) {
+func (j *Java) Init(props properties.Properties, env platform.Environment) {
 	javaRegex := `(?: JRE)(?: \(.*\))? \((?P<version>(?P<major>[0-9]+)(?:\.(?P<minor>[0-9]+))?(?:\.(?P<patch>[0-9]+))?).*\),`
 	javaCmd := &cmd{
 		executable: "java",

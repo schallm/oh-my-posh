@@ -8,28 +8,28 @@ sidebar_label: Nbgv
 
 Display the [Nerdbank.GitVersioning][nbgv] version.
 
-:::warning
+:::caution
 The Nerdbank.GitVersioning CLI can be a bit slow causing the prompt to feel slow.
 :::
 
 ## Sample Configuration
 
-```json
-{
+import Config from '@site/src/components/Config.js';
+
+<Config data={{
   "type": "nbgv",
   "style": "powerline",
   "powerline_symbol": "\uE0B0",
   "foreground": "#ffffff",
   "background": "#3a579a",
   "template": " \uF1D2 {{ .Version }} "
-}
-```
+}}/>
 
 ## Template ([info][templates])
 
 :::note default template
 
-``` template
+```template
 {{ .Version }}
 ```
 
@@ -37,13 +37,15 @@ The Nerdbank.GitVersioning CLI can be a bit slow causing the prompt to feel slow
 
 ### Properties
 
-- `.Version`: `string` - the current version
-- `.AssemblyVersion`: `string` - the current assembly version
-- `.AssemblyInformationalVersion`: `string` - the current assembly informational version
-- `.NuGetPackageVersion`: `string` - the current nuget package version
-- `.ChocolateyPackageVersion`: `string` - the current chocolatey package version
-- `.NpmPackageVersion`: `string` - the current npm package version
-- `.SimpleVersion`: `string` - the current simple version
+| Name                            | Type     | Description                                |
+| ------------------------------- | -------- | ------------------------------------------ |
+| `.Version`                      | `string` | the current version                        |
+| `.AssemblyVersion`              | `string` | the current assembly version               |
+| `.AssemblyInformationalVersion` | `string` | the current assembly informational version |
+| `.NuGetPackageVersion`          | `string` | the current nuget package version          |
+| `.ChocolateyPackageVersion`     | `string` | the current chocolatey package version     |
+| `.NpmPackageVersion`            | `string` | the current npm package version            |
+| `.SimpleVersion`                | `string` | the current simple version                 |
 
 [nbgv]: https://github.com/dotnet/Nerdbank.GitVersioning
 [templates]: /docs/configuration/templates

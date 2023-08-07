@@ -2,13 +2,15 @@ package segments
 
 import (
 	"encoding/json"
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 )
 
 type Wakatime struct {
 	props properties.Properties
-	env   environment.Environment
+	env   platform.Environment
 
 	wtData
 }
@@ -19,13 +21,13 @@ type wtTotals struct {
 }
 
 type wtData struct {
-	CummulativeTotal wtTotals `json:"cummulative_total"`
-	Start            string   `json:"start"`
-	End              string   `json:"end"`
+	CumulativeTotal wtTotals `json:"cumulative_total"`
+	Start           string   `json:"start"`
+	End             string   `json:"end"`
 }
 
 func (w *Wakatime) Template() string {
-	return " {{ secondsRound .CummulativeTotal.Seconds }} "
+	return " {{ secondsRound .CumulativeTotal.Seconds }} "
 }
 
 func (w *Wakatime) Enabled() bool {
@@ -34,7 +36,10 @@ func (w *Wakatime) Enabled() bool {
 }
 
 func (w *Wakatime) setAPIData() error {
-	url := w.props.GetString(URL, "")
+	url, err := w.getURL()
+	if err != nil {
+		return err
+	}
 	cacheTimeout := w.props.GetInt(properties.CacheTimeout, properties.DefaultCacheTimeout)
 	if cacheTimeout > 0 {
 		// check if data stored in cache
@@ -64,7 +69,17 @@ func (w *Wakatime) setAPIData() error {
 	return nil
 }
 
-func (w *Wakatime) Init(props properties.Properties, env environment.Environment) {
+func (w *Wakatime) getURL() (string, error) {
+	url := w.props.GetString(URL, "")
+	tmpl := &template.Text{
+		Template: url,
+		Context:  w,
+		Env:      w.env,
+	}
+	return tmpl.Render()
+}
+
+func (w *Wakatime) Init(props properties.Properties, env platform.Environment) {
 	w.props = props
 	w.env = env
 }

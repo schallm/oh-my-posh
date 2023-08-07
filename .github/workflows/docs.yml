@@ -5,30 +5,36 @@ on:
     branches:
       - main
     paths:
-    - 'website/**'
-    - 'themes/**'
+      - "website/**"
+      - "themes/**"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
     name: Build and Deploy
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9
         with:
           submodules: true
           persist-credentials: false
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753
         with:
-          go-version: 1.18
-      - uses: actions/setup-node@v3
+          go-version: 1.20.5
+          cache-dependency-path: src/go.sum
+      - uses: actions/setup-node@e33196f7422957bea03ed53f6fbb155025ffc7b8
         with:
           node-version: 17.6.0
         # Create Kind cluster to have a Kubernetes context for cloud-native-azure theme
         # Images are defined on every Kind release
         # See https://github.com/kubernetes-sigs/kind/releases
       - name: Create k8s v1.23 Kind Cluster
-        uses: helm/kind-action@v1.2.0
+        uses: helm/kind-action@dda0770415bac9fc20092cacbc54aa298604d140
         with:
           node_image: kindest/node:v1.23.4@sha256:0e34f0d0fd448aa2f2819cfd74e99fe5793a6e4938b328f657c8e3f81ee0dfb9
           cluster_name: posh
@@ -38,7 +44,7 @@ jobs:
       - name: Set default Kubernetes namespace
         run: |
           kubectl config set-context posh --namespace demo
-      - uses: azure/login@v1
+      - uses: azure/login@92a5484dfaf04ca78a94597f4f19fea633851fa2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       - name: Build oh-my-posh 🔧
@@ -55,7 +61,7 @@ jobs:
           cd ..
       - name: Build Docs And Deploy 🚀
         id: builddeploy
-        uses: Azure/static-web-apps-deploy@v1
+        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ASHY_MEADOW_063E9BA03 }}
           repo_token: ${{ secrets.GITHUB_TOKEN }} # Used for Github integrations (i.e. PR comments)

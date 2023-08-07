@@ -1,10 +1,14 @@
 package font
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
 )
 
 type release struct {
@@ -20,13 +24,14 @@ type Asset struct {
 func (a Asset) FilterValue() string { return a.Name }
 
 func Nerds() ([]*Asset, error) {
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://api.github.com/repos/ryanoasis/nerd-fonts/releases/latest", nil)
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second*time.Duration(20))
+	defer cancelF()
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/ryanoasis/nerd-fonts/releases/latest", nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Add("Accept", "application/vnd.github.v3+json")
-	response, err := client.Do(req)
+	response, err := platform.Client.Do(req)
 	if err != nil || response.StatusCode != http.StatusOK {
 		return nil, errors.New("failed to get nerd fonts release")
 	}

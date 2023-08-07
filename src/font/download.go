@@ -4,11 +4,14 @@ package font
 // component library.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
 )
 
 func Download(fontPath string) ([]byte, error) {
@@ -35,16 +38,18 @@ func isZipFile(data []byte) bool {
 }
 
 func getRemoteFile(location string) (data []byte, err error) {
-	var client = http.Client{}
-
-	resp, err := client.Get(location)
+	req, err := http.NewRequestWithContext(context.Background(), "GET", location, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := platform.Client.Do(req)
 	if err != nil {
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return
+		return data, fmt.Errorf("Failed to download zip file: %s\n→ %s", resp.Status, location)
 	}
 
 	data, err = io.ReadAll(resp.Body)

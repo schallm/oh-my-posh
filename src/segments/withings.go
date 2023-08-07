@@ -4,13 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"oh-my-posh/environment"
-	"oh-my-posh/http"
-	"oh-my-posh/properties"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/http"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 
 	http2 "net/http"
 	"net/url"
@@ -77,7 +77,7 @@ type WithingsAPI interface {
 }
 
 type withingsAPI struct {
-	*http.OAuth
+	*http.OAuthRequest
 }
 
 func (w *withingsAPI) GetMeasures(meastypes string) (*WithingsData, error) {
@@ -105,11 +105,16 @@ func (w *withingsAPI) GetActivities(activities string) (*WithingsData, error) {
 }
 
 func (w *withingsAPI) GetSleep() (*WithingsData, error) {
-	now := time.Now()
+	today := time.Now()
+	yesterday := today.AddDate(0, 0, -1)
+	// start from 21:00 yesterday
+	start := time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 21, 0, 0, 0, time.UTC).Unix()
+	// end at 12PM today
+	end := time.Date(today.Year(), today.Month(), today.Day(), 12, 0, 0, 0, time.UTC).Unix()
 	formData := url.Values{
 		"action":    {"get"},
-		"startdate": {strconv.FormatInt(now.AddDate(0, -1, 0).Unix(), 10)},
-		"enddate":   {strconv.FormatInt(now.Unix(), 10)},
+		"startdate": {strconv.FormatInt(start, 10)},
+		"enddate":   {strconv.FormatInt(end, 10)},
 	}
 	return w.getWithingsData("https://wbsapi.withings.net/v2/sleep", formData)
 }
@@ -120,7 +125,7 @@ func (w *withingsAPI) getWithingsData(endpoint string, formData url.Values) (*Wi
 		request.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	}
 	body := strings.NewReader(formData.Encode())
-	data, err := http.OauthResult[*WithingsData](w.OAuth, endpoint, body, modifiers)
+	data, err := http.OauthResult[*WithingsData](w.OAuthRequest, endpoint, body, modifiers)
 	if data != nil && data.Status != 0 {
 		return nil, errors.New("Withings API error: " + strconv.Itoa(data.Status))
 	}
@@ -147,24 +152,16 @@ func (w *Withings) Template() string {
 }
 
 func (w *Withings) Enabled() bool {
-	wg := sync.WaitGroup{}
-	wg.Add(3)
-	functions := []func() bool{
-		w.getMeasures,
-		w.getActivities,
-		w.getSleep,
-	}
 	var enabled bool
-	for _, function := range functions {
-		go func(f func() bool) {
-			defer wg.Done()
-			success := f()
-			if success {
-				enabled = true
-			}
-		}(function)
+	if w.getActivities() {
+		enabled = true
 	}
-	wg.Wait()
+	if w.getMeasures() {
+		enabled = true
+	}
+	if w.getSleep() {
+		enabled = true
+	}
 	return enabled
 }
 
@@ -188,8 +185,15 @@ func (w *Withings) getActivities() bool {
 	if err != nil || len(data.Body.Activities) == 0 {
 		return false
 	}
-	w.Steps = data.Body.Activities[0].Steps
-	return true
+	today := time.Now().Format("2006-01-02")
+	for _, activity := range data.Body.Activities {
+		if activity.Date != today {
+			continue
+		}
+		w.Steps = activity.Steps
+		return true
+	}
+	return false
 }
 
 func (w *Withings) getSleep() bool {
@@ -197,23 +201,33 @@ func (w *Withings) getSleep() bool {
 	if err != nil || len(data.Body.Series) == 0 {
 		return false
 	}
-	sleepStart := time.Unix(data.Body.Series[0].Startdate, 0)
-	sleepEnd := time.Unix(data.Body.Series[0].Enddate, 0)
+	var sleepStart, sleepEnd time.Time
+	for _, series := range data.Body.Series {
+		start := time.Unix(series.Startdate, 0)
+		if sleepStart.IsZero() || start.Before(sleepStart) {
+			sleepStart = start
+		}
+		end := time.Unix(series.Enddate, 0)
+		if sleepStart.IsZero() || start.After(sleepEnd) {
+			sleepEnd = end
+		}
+	}
 	sleepHours := sleepEnd.Sub(sleepStart).Hours()
 	w.SleepHours = fmt.Sprintf("%0.1f", sleepHours)
 	return true
 }
 
-func (w *Withings) Init(props properties.Properties, env environment.Environment) {
+func (w *Withings) Init(props properties.Properties, env platform.Environment) {
 	w.props = props
 
+	oauth := &http.OAuthRequest{
+		AccessTokenKey:  WithingsAccessTokenKey,
+		RefreshTokenKey: WithingsRefreshTokenKey,
+		SegmentName:     "withings",
+	}
+	oauth.Init(env, props)
+
 	w.api = &withingsAPI{
-		OAuth: &http.OAuth{
-			Props:           props,
-			Env:             env,
-			AccessTokenKey:  WithingsAccessTokenKey,
-			RefreshTokenKey: WithingsRefreshTokenKey,
-			SegmentName:     "withings",
-		},
+		OAuthRequest: oauth,
 	}
 }

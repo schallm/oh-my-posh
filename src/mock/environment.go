@@ -3,9 +3,10 @@ package mock
 import (
 	"io"
 	"io/fs"
-	"oh-my-posh/environment"
-	"oh-my-posh/environment/battery"
 	"time"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform/battery"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -104,9 +105,9 @@ func (env *MockedEnvironment) RunShellCommand(shell, command string) string {
 	return args.String(0)
 }
 
-func (env *MockedEnvironment) ErrorCode() int {
+func (env *MockedEnvironment) StatusCodes() (int, string) {
 	args := env.Called()
-	return args.Int(0)
+	return args.Int(0), args.String(1)
 }
 
 func (env *MockedEnvironment) ExecutionTime() float64 {
@@ -119,9 +120,9 @@ func (env *MockedEnvironment) Root() bool {
 	return args.Bool(0)
 }
 
-func (env *MockedEnvironment) Flags() *environment.Flags {
+func (env *MockedEnvironment) Flags() *platform.Flags {
 	arguments := env.Called()
-	return arguments.Get(0).(*environment.Flags)
+	return arguments.Get(0).(*platform.Flags)
 }
 
 func (env *MockedEnvironment) BatteryState() (*battery.Info, error) {
@@ -139,19 +140,19 @@ func (env *MockedEnvironment) QueryWindowTitles(processName, windowTitleRegex st
 	return args.String(0), args.Error(1)
 }
 
-func (env *MockedEnvironment) WindowsRegistryKeyValue(path string) (*environment.WindowsRegistryValue, error) {
+func (env *MockedEnvironment) WindowsRegistryKeyValue(path string) (*platform.WindowsRegistryValue, error) {
 	args := env.Called(path)
-	return args.Get(0).(*environment.WindowsRegistryValue), args.Error(1)
+	return args.Get(0).(*platform.WindowsRegistryValue), args.Error(1)
 }
 
-func (env *MockedEnvironment) HTTPRequest(url string, body io.Reader, timeout int, requestModifiers ...environment.HTTPRequestModifier) ([]byte, error) {
+func (env *MockedEnvironment) HTTPRequest(url string, _ io.Reader, _ int, _ ...platform.HTTPRequestModifier) ([]byte, error) {
 	args := env.Called(url)
 	return args.Get(0).([]byte), args.Error(1)
 }
 
-func (env *MockedEnvironment) HasParentFilePath(path string) (*environment.FileInfo, error) {
+func (env *MockedEnvironment) HasParentFilePath(path string) (*platform.FileInfo, error) {
 	args := env.Called(path)
-	return args.Get(0).(*environment.FileInfo), args.Error(1)
+	return args.Get(0).(*platform.FileInfo), args.Error(1)
 }
 
 func (env *MockedEnvironment) StackCount() int {
@@ -179,9 +180,9 @@ func (env *MockedEnvironment) CachePath() string {
 	return args.String(0)
 }
 
-func (env *MockedEnvironment) Cache() environment.Cache {
+func (env *MockedEnvironment) Cache() platform.Cache {
 	args := env.Called()
-	return args.Get(0).(environment.Cache)
+	return args.Get(0).(platform.Cache)
 }
 
 func (env *MockedEnvironment) Close() {
@@ -198,29 +199,38 @@ func (env *MockedEnvironment) InWSLSharedDrive() bool {
 	return args.Bool(0)
 }
 
-func (env *MockedEnvironment) ConvertToWindowsPath(path string) string {
+func (env *MockedEnvironment) ConvertToWindowsPath(_ string) string {
 	args := env.Called()
 	return args.String(0)
 }
 
-func (env *MockedEnvironment) ConvertToLinuxPath(path string) string {
+func (env *MockedEnvironment) ConvertToLinuxPath(_ string) string {
 	args := env.Called()
 	return args.String(0)
 }
 
-func (env *MockedEnvironment) WifiNetwork() (*environment.WifiInfo, error) {
-	args := env.Called()
-	return args.Get(0).(*environment.WifiInfo), args.Error(1)
+func (env *MockedEnvironment) Connection(connectionType platform.ConnectionType) (*platform.Connection, error) {
+	args := env.Called(connectionType)
+	return args.Get(0).(*platform.Connection), args.Error(1)
 }
 
-func (env *MockedEnvironment) TemplateCache() *environment.TemplateCache {
+func (env *MockedEnvironment) TemplateCache() *platform.TemplateCache {
 	args := env.Called()
-	return args.Get(0).(*environment.TemplateCache)
+	return args.Get(0).(*platform.TemplateCache)
+}
+
+func (env *MockedEnvironment) LoadTemplateCache() {
+	_ = env.Called()
 }
 
 func (env *MockedEnvironment) MockGitCommand(dir, returnValue string, args ...string) {
 	args = append([]string{"-C", dir, "--no-optional-locks", "-c", "core.quotepath=false", "-c", "color.status=false"}, args...)
 	env.On("RunCommand", "git", args).Return(returnValue, nil)
+}
+
+func (env *MockedEnvironment) MockHgCommand(dir, returnValue string, args ...string) {
+	args = append([]string{"-R", dir}, args...)
+	env.On("RunCommand", "hg", args).Return(returnValue, nil)
 }
 
 func (env *MockedEnvironment) MockSvnCommand(dir, returnValue string, args ...string) {
@@ -238,15 +248,37 @@ func (env *MockedEnvironment) DirMatchesOneOf(dir string, regexes []string) bool
 	return args.Bool(0)
 }
 
-func (env *MockedEnvironment) Trace(start time.Time, function string, args ...string) {
-	_ = env.Called(start, function, args)
+func (env *MockedEnvironment) Trace(start time.Time, args ...string) {
+	_ = env.Called(start, args)
 }
 
-func (env *MockedEnvironment) Log(logType environment.LogType, funcName, message string) {
-	_ = env.Called(logType, funcName, message)
+func (env *MockedEnvironment) Debug(message string) {
+	_ = env.Called(message)
+}
+
+func (env *MockedEnvironment) DebugF(format string, a ...any) {
+	_ = env.Called(format, a)
+}
+
+func (env *MockedEnvironment) Error(err error) {
+	_ = env.Called(err)
 }
 
 func (env *MockedEnvironment) DirIsWritable(path string) bool {
 	args := env.Called(path)
 	return args.Bool(0)
+}
+
+func (env *MockedEnvironment) SetPromptCount() {
+	_ = env.Called()
+}
+
+func (env *MockedEnvironment) CursorPosition() (int, int) {
+	args := env.Called()
+	return args.Int(0), args.Int(1)
+}
+
+func (env *MockedEnvironment) SystemInfo() (*platform.SystemInfo, error) {
+	args := env.Called()
+	return args.Get(0).(*platform.SystemInfo), args.Error(1)
 }

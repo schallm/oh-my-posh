@@ -1,14 +1,15 @@
 package segments
 
 import (
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
 	"strings"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Shell struct {
 	props properties.Properties
-	env   environment.Environment
+	env   platform.Environment
 
 	Name    string
 	Version string
@@ -20,7 +21,7 @@ const (
 )
 
 func (s *Shell) Template() string {
-	return " {{ .Name }} "
+	return NameTemplate
 }
 
 func (s *Shell) Enabled() bool {
@@ -36,7 +37,7 @@ func (s *Shell) Enabled() bool {
 	return true
 }
 
-func (s *Shell) Init(props properties.Properties, env environment.Environment) {
+func (s *Shell) Init(props properties.Properties, env platform.Environment) {
 	s.props = props
 	s.env = env
 }

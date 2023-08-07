@@ -2,11 +2,12 @@ package engine
 
 import (
 	"encoding/json"
-	"oh-my-posh/environment"
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
-	"oh-my-posh/segments"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -44,7 +45,6 @@ func TestParseTestConfig(t *testing.T) {
 			"foreground": "#ffffff",
 			"background": "#61AFEF",
 			"properties": {
-				"prefix": " \uE5FF ",
 				"style": "folder",
 				"exclude_folders": [
 					"/super/secret/project"
@@ -71,7 +71,7 @@ func TestShouldIncludeFolder(t *testing.T) {
 	}
 	for _, tc := range cases {
 		env := new(mock.MockedEnvironment)
-		env.On("GOOS").Return(environment.LinuxPlatform)
+		env.On("GOOS").Return(platform.LINUX)
 		env.On("Home").Return("")
 		env.On("Pwd").Return(cwd)
 		env.On("DirMatchesOneOf", cwd, []string{"Projects/oh-my-posh"}).Return(tc.Included)
@@ -142,7 +142,7 @@ func TestGetColors(t *testing.T) {
 	}
 	for _, tc := range cases {
 		env := new(mock.MockedEnvironment)
-		env.On("TemplateCache").Return(&environment.TemplateCache{
+		env.On("TemplateCache").Return(&platform.TemplateCache{
 			Env: make(map[string]string),
 		})
 		segment := &Segment{

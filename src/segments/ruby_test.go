@@ -2,9 +2,10 @@ package segments
 
 import (
 	"fmt"
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -29,7 +30,7 @@ func TestRuby(t *testing.T) {
 		{Case: "Ruby files", ExpectedString: "", ExpectedEnabled: true, FetchVersion: false, HasRubyFiles: true},
 		{Case: "Rakefile", ExpectedString: "", ExpectedEnabled: true, FetchVersion: false, HasRakeFile: true},
 		{Case: "Gemfile", ExpectedString: "", ExpectedEnabled: true, FetchVersion: false, HasGemFile: true},
-		{Case: "Gemfile with version", ExpectedString: "", ExpectedEnabled: true, FetchVersion: true, HasGemFile: true},
+		{Case: "Gemfile with version", ExpectedString: noVersion, ExpectedEnabled: true, FetchVersion: true, HasGemFile: true},
 		{Case: "No files with version", ExpectedString: "", ExpectedEnabled: false, FetchVersion: true},
 		{
 			Case:            "Version with chruby",

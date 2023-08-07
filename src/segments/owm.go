@@ -4,15 +4,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
+	"math"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Owm struct {
 	props properties.Properties
-	env   environment.Environment
+	env   platform.Environment
 
-	Temperature float64
+	Temperature int
 	Weather     string
 	URL         string
 	units       string
@@ -26,6 +28,10 @@ const (
 	Location properties.Property = "location"
 	// Units openweathermap units
 	Units properties.Property = "units"
+	// Latitude for the location used in place of location
+	Latitude properties.Property = "latitude"
+	// Longitude for the location used in place of location
+	Longitude properties.Property = "longitude"
 	// CacheKeyResponse key used when caching the response
 	CacheKeyResponse string = "owm_response"
 	// CacheKeyURL key used when caching the url responsible for the response
@@ -46,9 +52,20 @@ type owmDataResponse struct {
 	temperature `json:"main"`
 }
 
+type geoLocation struct {
+	Lat float64 `json:"lat"`
+	Lon float64 `json:"lon"`
+}
+
 func (d *Owm) Enabled() bool {
 	err := d.setStatus()
-	return err == nil
+
+	if err != nil {
+		d.env.Error(err)
+		return false
+	}
+
+	return true
 }
 
 func (d *Owm) Template() string {
@@ -74,9 +91,41 @@ func (d *Owm) getResult() (*owmDataResponse, error) {
 
 	apikey := d.props.GetString(APIKey, ".")
 	location := d.props.GetString(Location, "De Bilt,NL")
+	latitude := d.props.GetFloat64(Latitude, 91)    // This default value is intentionally invalid since there should not be a default for this and 0 is a valid value
+	longitude := d.props.GetFloat64(Longitude, 181) // This default value is intentionally invalid since there should not be a default for this and 0 is a valid value
 	units := d.props.GetString(Units, "standard")
 	httpTimeout := d.props.GetInt(properties.HTTPTimeout, properties.DefaultHTTPTimeout)
-	d.URL = fmt.Sprintf("http://api.openweathermap.org/data/2.5/weather?q=%s&units=%s&appid=%s", location, units, apikey)
+
+	validCoordinates := func(latitude, longitude float64) bool {
+		// Latitude values are only valid if they are between -90 and 90
+		// Longitude values are only valid if they are between -180 and 180
+		// https://gisgeography.com/latitude-longitude-coordinates/
+		return latitude <= 90 && latitude >= -90 && longitude <= 180 && longitude >= -180
+	}
+
+	if !validCoordinates(latitude, longitude) {
+		var geoResponse []geoLocation
+		geocodingURL := fmt.Sprintf("http://api.openweathermap.org/geo/1.0/direct?q=%s&limit=1&appid=%s", location, apikey)
+
+		body, err := d.env.HTTPRequest(geocodingURL, nil, httpTimeout)
+		if err != nil {
+			return new(owmDataResponse), err
+		}
+
+		err = json.Unmarshal(body, &geoResponse)
+		if err != nil {
+			return new(owmDataResponse), err
+		}
+
+		if len(geoResponse) == 0 {
+			return new(owmDataResponse), fmt.Errorf("no coordinates found for %s", location)
+		}
+
+		latitude = geoResponse[0].Lat
+		longitude = geoResponse[0].Lon
+	}
+
+	d.URL = fmt.Sprintf("http://api.openweathermap.org/data/2.5/weather?lat=%v&lon=%v&units=%s&appid=%s", latitude, longitude, units, apikey)
 
 	body, err := d.env.HTTPRequest(d.URL, nil, httpTimeout)
 	if err != nil {
@@ -97,26 +146,29 @@ func (d *Owm) getResult() (*owmDataResponse, error) {
 
 func (d *Owm) setStatus() error {
 	units := d.props.GetString(Units, "standard")
+
 	q, err := d.getResult()
 	if err != nil {
 		return err
 	}
+
 	if len(q.Data) == 0 {
 		return errors.New("No data found")
 	}
+
 	id := q.Data[0].TypeID
 
-	d.Temperature = q.temperature.Value
+	d.Temperature = int(math.Round(q.temperature.Value))
 	icon := ""
 	switch id {
 	case "01n":
-		fallthrough
+		icon = "\ue32b"
 	case "01d":
-		icon = "\ufa98"
+		icon = "\ue30d"
 	case "02n":
-		fallthrough
+		icon = "\ue37e"
 	case "02d":
-		icon = "\ufa94"
+		icon = "\ue302"
 	case "03n":
 		fallthrough
 	case "03d":
@@ -128,15 +180,15 @@ func (d *Owm) setStatus() error {
 	case "09n":
 		fallthrough
 	case "09d":
-		icon = "\ufa95"
+		icon = "\ue319"
 	case "10n":
-		fallthrough
+		icon = "\ue325"
 	case "10d":
 		icon = "\ue308"
 	case "11n":
-		fallthrough
+		icon = "\ue32a"
 	case "11d":
-		icon = "\ue31d"
+		icon = "\ue30f"
 	case "13n":
 		fallthrough
 	case "13d":
@@ -157,12 +209,12 @@ func (d *Owm) setStatus() error {
 	case "":
 		fallthrough
 	case "standard":
-		d.UnitIcon = "°K" // \ufa05"
+		d.UnitIcon = "°K" // <b>K</b>"
 	}
 	return nil
 }
 
-func (d *Owm) Init(props properties.Properties, env environment.Environment) {
+func (d *Owm) Init(props properties.Properties, env platform.Environment) {
 	d.props = props
 	d.env = env
 }

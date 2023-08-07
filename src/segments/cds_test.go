@@ -2,11 +2,12 @@ package segments
 
 import (
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
 	"path/filepath"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -115,7 +116,7 @@ func TestCdsSegment(t *testing.T) {
 			"display_mode": tc.DisplayMode,
 		}
 
-		env.On("TemplateCache").Return(&environment.TemplateCache{
+		env.On("TemplateCache").Return(&platform.TemplateCache{
 			Env: make(map[string]string),
 		})
 

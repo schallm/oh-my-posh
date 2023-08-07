@@ -1,10 +1,10 @@
 package segments
 
 import (
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
-	"oh-my-posh/template"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -15,6 +15,7 @@ func TestAWSSegment(t *testing.T) {
 		ExpectedString  string
 		ExpectedEnabled bool
 		Profile         string
+		DefaultProfile  string
 		Vault           string
 		Region          string
 		DefaultRegion   string
@@ -26,6 +27,7 @@ func TestAWSSegment(t *testing.T) {
 		{Case: "disabled with default user", ExpectedString: "default@eu-west", Region: "eu-west", ExpectedEnabled: false, DisplayDefault: false},
 		{Case: "disabled", ExpectedString: "", ExpectedEnabled: false},
 		{Case: "enabled with default user", ExpectedString: "default@eu-west", Profile: "default", Region: "eu-west", ExpectedEnabled: true, DisplayDefault: true},
+		{Case: "enabled with default profile", ExpectedString: "default@eu-west", DefaultProfile: "default", Region: "eu-west", ExpectedEnabled: true, DisplayDefault: true},
 		{Case: "disabled with default user", ExpectedString: "default", Profile: "default", Region: "eu-west", ExpectedEnabled: false, DisplayDefault: false},
 		{Case: "enabled no region", ExpectedString: "company", ExpectedEnabled: true, Profile: "company"},
 		{Case: "enabled with region", ExpectedString: "company@eu-west", ExpectedEnabled: true, Profile: "company", Region: "eu-west", DefaultRegion: "us-west"},
@@ -45,13 +47,14 @@ func TestAWSSegment(t *testing.T) {
 			Region:          "eu-west",
 			Template:        "profile: {{.Profile}}{{if .Region}} in {{.Region}}{{end}}",
 		},
-		{Case: "template: invalid", ExpectedString: template.InvalidTemplate, ExpectedEnabled: true, Profile: "c", Template: "{{ .Burp"},
+		{Case: "template: invalid", ExpectedString: "{{ .Burp", ExpectedEnabled: true, Profile: "c", Template: "{{ .Burp"},
 	}
 
 	for _, tc := range cases {
 		env := new(mock.MockedEnvironment)
 		env.On("Getenv", "AWS_VAULT").Return(tc.Vault)
 		env.On("Getenv", "AWS_PROFILE").Return(tc.Profile)
+		env.On("Getenv", "AWS_DEFAULT_PROFILE").Return(tc.DefaultProfile)
 		env.On("Getenv", "AWS_REGION").Return(tc.Region)
 		env.On("Getenv", "AWS_DEFAULT_REGION").Return(tc.DefaultRegion)
 		env.On("Getenv", "AWS_CONFIG_FILE").Return(tc.ConfigFile)

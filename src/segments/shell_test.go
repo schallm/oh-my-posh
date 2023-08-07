@@ -1,10 +1,11 @@
 package segments
 
 import (
-	"oh-my-posh/environment"
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -13,7 +14,7 @@ func TestWriteCurrentShell(t *testing.T) {
 	expected := "zsh"
 	env := new(mock.MockedEnvironment)
 	env.On("Shell").Return(expected, nil)
-	env.On("Flags").Return(&environment.Flags{ShellVersion: "1.2.3"})
+	env.On("Flags").Return(&platform.Flags{ShellVersion: "1.2.3"})
 	s := &Shell{
 		env:   env,
 		props: properties.Map{},
@@ -34,7 +35,7 @@ func TestUseMappedShellNames(t *testing.T) {
 	for _, tc := range cases {
 		env := new(mock.MockedEnvironment)
 		env.On("Shell").Return(tc.Expected, nil)
-		env.On("Flags").Return(&environment.Flags{ShellVersion: "1.2.3"})
+		env.On("Flags").Return(&platform.Flags{ShellVersion: "1.2.3"})
 		s := &Shell{
 			env: env,
 			props: properties.Map{

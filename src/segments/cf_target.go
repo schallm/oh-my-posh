@@ -1,14 +1,16 @@
 package segments
 
 import (
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
-	"regexp"
+	"errors"
+	"strings"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type CfTarget struct {
 	props properties.Properties
-	env   environment.Environment
+	env   platform.Environment
 
 	CfTargetDetails
 }
@@ -24,60 +26,69 @@ func (c *CfTarget) Template() string {
 	return "{{if .Org }}{{ .Org }}{{ end }}{{if .Space }}/{{ .Space }}{{ end }}"
 }
 
-func (c *CfTarget) Init(props properties.Properties, env environment.Environment) {
+func (c *CfTarget) Init(props properties.Properties, env platform.Environment) {
 	c.props = props
 	c.env = env
 }
 
 func (c *CfTarget) Enabled() bool {
-	return c.setCFTargetStatus()
-}
-
-func (c *CfTarget) getCFTargetCommandOutput() string {
 	if !c.env.HasCommand("cf") {
-		return ""
-	}
-
-	output, err := c.env.RunCommand("cf", "target")
-
-	if err != nil {
-		return ""
-	}
-
-	return output
-}
-
-func (c *CfTarget) setCFTargetStatus() bool {
-	output := c.getCFTargetCommandOutput()
-
-	if output == "" {
 		return false
 	}
 
-	regex := regexp.MustCompile(`API endpoint:\s*(?P<api_url>http[s].*)|user:\s*(?P<user>.*)|org:\s*(?P<org>.*)|space:\s*(?P<space>(.*))`)
-	match := regex.FindAllStringSubmatch(output, -1)
-	result := make(map[string]string)
+	displayMode := c.props.GetString(DisplayMode, DisplayModeAlways)
+	if displayMode != DisplayModeFiles {
+		return c.setCFTargetStatus()
+	}
 
-	for i, name := range regex.SubexpNames() {
-		if i == 0 || len(name) == 0 {
+	manifest, err := c.env.HasParentFilePath("manifest.yml")
+	if err != nil || manifest.IsDir {
+		return false
+	}
+
+	return c.setCFTargetStatus()
+}
+
+func (c *CfTarget) setCFTargetStatus() bool {
+	output, err := c.getCFTargetCommandOutput()
+
+	if err != nil {
+		return false
+	}
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		splitted := strings.SplitN(line, ":", 2)
+		if len(splitted) < 2 {
 			continue
 		}
-
-		for j, val := range match[i-1] {
-			if j == 0 {
-				continue
-			}
-
-			if val != "" {
-				result[name] = val
-			}
+		key := splitted[0]
+		value := strings.TrimSpace(splitted[1])
+		switch key {
+		case "API endpoint":
+			c.URL = value
+		case "user":
+			c.User = value
+		case "org":
+			c.Org = value
+		case "space":
+			c.Space = value
 		}
 	}
 
-	c.URL = result["api_url"]
-	c.Org = result["org"]
-	c.Space = result["space"]
-	c.User = result["user"]
-
 	return true
+}
+
+func (c *CfTarget) getCFTargetCommandOutput() (string, error) {
+	output, err := c.env.RunCommand("cf", "target")
+
+	if err != nil {
+		return "", err
+	}
+
+	if len(output) == 0 {
+		return "", errors.New("cf command output is empty")
+	}
+
+	return output, nil
 }

@@ -1,8 +1,9 @@
 package template
 
 import (
-	"oh-my-posh/environment"
 	"strings"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
 )
 
 type Logic string
@@ -18,7 +19,7 @@ func (l List) Empty() bool {
 	return len(l) == 0
 }
 
-func (l List) Resolve(context interface{}, env environment.Environment, defaultValue string, logic Logic) string {
+func (l List) Resolve(context interface{}, env platform.Environment, defaultValue string, logic Logic) string {
 	switch logic {
 	case FirstMatch:
 		return l.FirstMatch(context, env, defaultValue)
@@ -29,7 +30,7 @@ func (l List) Resolve(context interface{}, env environment.Environment, defaultV
 	}
 }
 
-func (l List) Join(context interface{}, env environment.Environment) string {
+func (l List) Join(context interface{}, env platform.Environment) string {
 	if len(l) == 0 {
 		return ""
 	}
@@ -49,7 +50,7 @@ func (l List) Join(context interface{}, env environment.Environment) string {
 	return buffer.String()
 }
 
-func (l List) FirstMatch(context interface{}, env environment.Environment, defaultValue string) string {
+func (l List) FirstMatch(context interface{}, env platform.Environment, defaultValue string) string {
 	if len(l) == 0 {
 		return defaultValue
 	}

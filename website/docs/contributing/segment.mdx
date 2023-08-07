@@ -4,7 +4,7 @@ title: Add Segment
 sidebar_label: Add Segment
 ---
 
-## Create the logic
+## Create the logic (Writer)
 
 Add a new file in the `./src/segments` folder: `new.go`.
 Ensure `New` is a single verb indicating the context the segment renders.
@@ -15,13 +15,13 @@ You can use the following template as a guide.
 package segments
 
 import (
-  "oh-my-posh/environment"
-  "oh-my-posh/properties"
+  "github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type New struct {
     props   properties.Properties
-    env     environment.Environment
+    env     platform.Environment
 
     Text string
 }
@@ -31,15 +31,15 @@ const (
     NewProp properties.Property = "newprop"
 )
 
-func (n *new) Enabled() bool {
+func (n *New) Enabled() bool {
     return true
 }
 
-func (n *new) Template() string {
+func (n *New) Template() string {
     return " {{.Text}} world "
 }
 
-func (n *new) Init(props properties.Properties, env environment.Environment) {
+func (n *New) Init(props properties.Properties, env platform.Environment) {
     n.props = props
     n.env = env
 
@@ -69,10 +69,10 @@ NEW SegmentType = "new"
 
 ## Add the SegmentType mapping
 
-Map your `SegmentType` to your Segment in the `mapSegmentWithWriter` function (respect the alphabetical order).
+Add your `SegmentType` and `Writer` to the `Segments` map (respect the alphabetical order).
 
 ```go
-NEW: &New{},
+NEW: func() SegmentWriter { return &segments.New{} },
 ```
 
 ## Test your functionality
@@ -85,7 +85,7 @@ go build -o $GOPATH/bin/oh-my-posh
 
 ## Add the documentation
 
-Create a new `markdown` file underneath the [`docs/docs/segments`][docs] folder called `new.md`.
+Create a new `markdown` file underneath the [`website/docs/segments`][docs] folder called `new.md`.
 Use the following template as a guide.
 
 ````markdown
@@ -101,8 +101,9 @@ Display something new.
 
 ## Sample Configuration
 
-```json
-{
+import Config from '@site/src/components/Config.js';
+
+<Config data={{
   "type": "new",
   "style": "powerline",
   "powerline_symbol": "\uE0B0",
@@ -111,12 +112,13 @@ Display something new.
   "properties": {
     "newprop": "\uEFF1"
   }
-}
-```
+}}/>
 
 ## Properties
 
-- newprop: `string` - the new text to show - defaults to `\uEFF1`
+| Name      | Type     | Description                                 |
+| --------- | -------- | ------------------------------------------- |
+| `newprop` | `string` | the new text to show - defaults to `\uEFF1` |
 ````
 
 ## Map the new documentation in the sidebar
@@ -165,7 +167,7 @@ At `$.definitions.segment.allOf`, add your segment details:
 
 And be patient, I'm going as fast as I can 🏎
 
-[segment-go]: https://github.com/JanDeDobbeleer/oh-my-posh/blob/main/segment.go
+[segment-go]: https://github.com/JanDeDobbeleer/oh-my-posh/blob/main/src/engine/segment.go
 [themes]: https://github.com/JanDeDobbeleer/oh-my-posh/tree/main/themes
 [docs]: https://github.com/JanDeDobbeleer/oh-my-posh/tree/main/website/docs/segments
 [sidebars]: https://github.com/JanDeDobbeleer/oh-my-posh/blob/main/website/sidebars.js

@@ -3,11 +3,14 @@ package segments
 import (
 	"errors"
 	"fmt"
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
 	"testing"
 
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
+
 	"github.com/stretchr/testify/assert"
+	mock2 "github.com/stretchr/testify/mock"
 )
 
 func TestWTTrackedTime(t *testing.T) {
@@ -70,8 +73,7 @@ func TestWTTrackedTime(t *testing.T) {
 
 	for _, tc := range cases {
 		env := &mock.MockedEnvironment{}
-
-		response := fmt.Sprintf(`{"cummulative_total": {"seconds": %.2f, "text": "x"}}`, float64(tc.Seconds))
+		response := fmt.Sprintf(`{"cumulative_total": {"seconds": %.2f, "text": "x"}}`, float64(tc.Seconds))
 
 		env.On("HTTPRequest", FAKEAPIURL).Return([]byte(response), tc.Error)
 
@@ -80,9 +82,12 @@ func TestWTTrackedTime(t *testing.T) {
 		cache.On("Set", FAKEAPIURL, response, tc.CacheTimeout).Return()
 		env.On("Cache").Return(cache)
 
+		env.On("TemplateCache").Return(&platform.TemplateCache{
+			Env: map[string]string{"HELLO": "hello"},
+		})
+
 		w := &Wakatime{
 			props: properties.Map{
-				APIKey:                  "key",
 				properties.CacheTimeout: tc.CacheTimeout,
 				URL:                     FAKEAPIURL,
 			},
@@ -91,5 +96,54 @@ func TestWTTrackedTime(t *testing.T) {
 
 		assert.ErrorIs(t, tc.Error, w.setAPIData(), tc.Case+" - Error")
 		assert.Equal(t, tc.Expected, renderTemplate(env, w.Template(), w), tc.Case+" - String")
+	}
+}
+
+func TestWTGetUrl(t *testing.T) {
+	cases := []struct {
+		Case        string
+		Expected    string
+		URL         string
+		ShouldError bool
+	}{
+		{
+			Case:     "no template",
+			Expected: "test",
+			URL:      "test",
+		},
+		{
+			Case:     "template",
+			URL:      "{{ .Env.HELLO }} world",
+			Expected: "hello world",
+		},
+		{
+			Case:        "error",
+			URL:         "{{ .BURR }}",
+			ShouldError: true,
+		},
+	}
+
+	for _, tc := range cases {
+		env := &mock.MockedEnvironment{}
+
+		env.On("Error", mock2.Anything)
+		env.On("TemplateCache").Return(&platform.TemplateCache{
+			Env: map[string]string{"HELLO": "hello"},
+		})
+
+		w := &Wakatime{
+			props: properties.Map{
+				URL: tc.URL,
+			},
+			env: env,
+		}
+
+		got, err := w.getURL()
+
+		if tc.ShouldError {
+			assert.Error(t, err, tc.Case)
+			continue
+		}
+		assert.Equal(t, tc.Expected, got, tc.Case)
 	}
 }

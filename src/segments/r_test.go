@@ -2,10 +2,11 @@ package segments
 
 import (
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -44,7 +45,7 @@ func TestR(t *testing.T) {
 		env.On("HasFiles", "*.R").Return(true)
 		env.On("Pwd").Return("/usr/home/project")
 		env.On("Home").Return("/usr/home")
-		env.On("TemplateCache").Return(&environment.TemplateCache{
+		env.On("TemplateCache").Return(&platform.TemplateCache{
 			Env: make(map[string]string),
 		})
 		props := properties.Map{

@@ -29,6 +29,7 @@ themeConfigOverrrides.set('amro.omp.json', newThemeConfig(40, 100, 'AmRo', '#1C2
 themeConfigOverrrides.set('avit.omp.json', newThemeConfig(40, 80));
 themeConfigOverrrides.set('blueish.omp.json', newThemeConfig(40, 100));
 themeConfigOverrrides.set('cert.omp.json', newThemeConfig(40, 50));
+themeConfigOverrrides.set('chips.omp.json', newThemeConfig(25, 30, 'CodexLink | v1.2.4, Single Width (07/11/2023) | https://github.com/CodexLink/chips.omp.json'));
 themeConfigOverrrides.set('cinnamon.omp.json', newThemeConfig(40, 80));
 themeConfigOverrrides.set('craver.omp.json', newThemeConfig(40, 80, 'Nick Craver', '#282c34'));
 themeConfigOverrrides.set('darkblood.omp.json', newThemeConfig(40, 40));
@@ -49,8 +50,9 @@ themeConfigOverrrides.set('powerlevel10k_classic.omp.json', newThemeConfig(10));
 themeConfigOverrrides.set('powerlevel10k_lean.omp.json', newThemeConfig(80));
 themeConfigOverrrides.set('powerline.omp.json', newThemeConfig(40, 40));
 themeConfigOverrrides.set('pure.omp.json', newThemeConfig(40, 80));
+themeConfigOverrrides.set('quick-term.omp.json', newThemeConfig(15, 0, 'SokLay'))
 themeConfigOverrrides.set('remk.omp.json', newThemeConfig(40, 40));
-themeConfigOverrrides.set('robbyrussel.omp.json', newThemeConfig(40, 40));
+themeConfigOverrrides.set('robbyrussell.omp.json', newThemeConfig(40, 40));
 themeConfigOverrrides.set('slim.omp.json', newThemeConfig(10, 80));
 themeConfigOverrrides.set('slimfat.omp.json', newThemeConfig(10, 93));
 themeConfigOverrrides.set('space.omp.json', newThemeConfig(40, 40));
@@ -61,6 +63,11 @@ themeConfigOverrrides.set('tonybaloney.omp.json', newThemeConfig(0, 40));
 themeConfigOverrrides.set('unicorn.omp.json', newThemeConfig(0, 40));
 themeConfigOverrrides.set('ys.omp.json', newThemeConfig(40, 100));
 themeConfigOverrrides.set('zash.omp.json', newThemeConfig(40, 40));
+themeConfigOverrrides.set('catppuccin.omp.json', newThemeConfig(40, 40, 'IrwinJuice', '#24273A'));
+themeConfigOverrrides.set('catppuccin_latte.omp.json', newThemeConfig(40, 40, 'IrwinJuice', '#EFF1F5'));
+themeConfigOverrrides.set('catppuccin_frappe.omp.json', newThemeConfig(40, 40, 'IrwinJuice', '#303446'));
+themeConfigOverrrides.set('catppuccin_macchiato.omp.json', newThemeConfig(40, 40, 'IrwinJuice', '#24273A'));
+themeConfigOverrrides.set('catppuccin_mocha.omp.json', newThemeConfig(40, 40, 'IrwinJuice', '#1E1E2E'));
 
 (async () => {
   const themes = await fs.promises.readdir(themesConfigDir);

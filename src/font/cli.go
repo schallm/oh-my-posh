@@ -37,9 +37,9 @@ type state int
 
 type itemDelegate struct{}
 
-func (d itemDelegate) Height() int                               { return 1 }
-func (d itemDelegate) Spacing() int                              { return 0 }
-func (d itemDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return nil }
+func (d itemDelegate) Height() int                             { return 1 }
+func (d itemDelegate) Spacing() int                            { return 0 }
+func (d itemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
 func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) { //nolint: gocritic
 	i, ok := listItem.(*Asset)
 	if !ok {
@@ -50,8 +50,8 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 
 	fn := itemStyle.Render
 	if index == m.Index() {
-		fn = func(s string) string {
-			return selectedItemStyle.Render("> " + s)
+		fn = func(s ...string) string {
+			return selectedItemStyle.Render("> " + strings.Join(s, " "))
 		}
 	}
 
@@ -69,11 +69,12 @@ const (
 )
 
 type main struct {
-	spinner  spinner.Model
-	list     *list.Model
-	fontname string
-	state    state
-	err      error
+	spinner spinner.Model
+	list    *list.Model
+	system  bool
+	font    string
+	state   state
+	err     error
 }
 
 func (m *main) buildFontList(nerdFonts []*Asset) {
@@ -113,8 +114,17 @@ func downloadFontZip(location string) {
 	program.Send(zipMsg(zipFile))
 }
 
-func installFontZIP(zipFile []byte) {
-	err := InstallZIP(zipFile)
+func installLocalFontZIP(zipFile string, user bool) {
+	data, err := os.ReadFile(zipFile)
+	if err != nil {
+		program.Send(errMsg(err))
+		return
+	}
+	installFontZIP(data, user)
+}
+
+func installFontZIP(zipFile []byte, user bool) {
+	err := InstallZIP(zipFile, user)
 	if err != nil {
 		program.Send(errMsg(err))
 		return
@@ -123,18 +133,27 @@ func installFontZIP(zipFile []byte) {
 }
 
 func (m *main) Init() tea.Cmd {
-	if len(m.fontname) != 0 {
+	isLocalZipFile := func() bool {
+		return !strings.HasPrefix(m.font, "https") && strings.HasSuffix(m.font, ".zip")
+	}
+
+	if len(m.font) != 0 && !isLocalZipFile() {
 		m.state = downloadFont
-		if !strings.HasPrefix(m.fontname, "https") {
-			m.fontname = fmt.Sprintf("https://github.com/ryanoasis/nerd-fonts/releases/latest/download/%s.zip", m.fontname)
+		if !strings.HasPrefix(m.font, "https") {
+			m.font = fmt.Sprintf("https://github.com/ryanoasis/nerd-fonts/releases/latest/download/%s.zip", m.font)
 		}
 		defer func() {
-			go downloadFontZip(m.fontname)
+			go downloadFontZip(m.font)
 		}()
 		m.spinner.Spinner = spinner.Globe
 		return m.spinner.Tick
 	}
+
 	defer func() {
+		if isLocalZipFile() {
+			go installLocalFontZIP(m.font, m.system)
+			return
+		}
 		go getFontsList()
 	}()
 	s := spinner.New()
@@ -142,6 +161,9 @@ func (m *main) Init() tea.Cmd {
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("170"))
 	m.spinner = s
 	m.state = getFonts
+	if isLocalZipFile() {
+		m.state = unzipFont
+	}
 	return m.spinner.Tick
 }
 
@@ -166,6 +188,9 @@ func (m *main) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "enter":
+			if len(m.font) != 0 || m.list == nil || m.list.SelectedItem() == nil {
+				return m, nil
+			}
 			var font *Asset
 			var ok bool
 			if font, ok = m.list.SelectedItem().(*Asset); !ok {
@@ -173,7 +198,7 @@ func (m *main) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			m.state = downloadFont
-			m.fontname = font.Name
+			m.font = font.Name
 			defer func() {
 				go downloadFontZip(font.URL)
 			}()
@@ -184,7 +209,7 @@ func (m *main) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case zipMsg:
 		m.state = installFont
 		defer func() {
-			go installFontZIP(msg)
+			go installFontZIP(msg, m.system)
 		}()
 		m.spinner.Spinner = spinner.Dot
 		return m, m.spinner.Tick
@@ -218,25 +243,26 @@ func (m *main) View() string {
 	case selectFont:
 		return "\n" + m.list.View()
 	case downloadFont:
-		return textStyle.Render(fmt.Sprintf("%s Downloading %s", m.spinner.View(), m.fontname))
+		return textStyle.Render(fmt.Sprintf("%s Downloading %s", m.spinner.View(), m.font))
 	case unzipFont:
-		return textStyle.Render(fmt.Sprintf("%s Extracting %s", m.spinner.View(), m.fontname))
+		return textStyle.Render(fmt.Sprintf("%s Extracting %s", m.spinner.View(), m.font))
 	case installFont:
-		return textStyle.Render(fmt.Sprintf("%s Installing %s", m.spinner.View(), m.fontname))
+		return textStyle.Render(fmt.Sprintf("%s Installing %s", m.spinner.View(), m.font))
 	case quit:
 		return textStyle.Render("No need to install a new font? That's cool.")
 	case done:
-		return textStyle.Render(fmt.Sprintf("Successfully installed %s 🚀", m.fontname))
+		return textStyle.Render(fmt.Sprintf("Successfully installed %s 🚀", m.font))
 	}
 	return ""
 }
 
-func Run(font string) {
+func Run(font string, system bool) {
 	main := &main{
-		fontname: font,
+		font:   font,
+		system: system,
 	}
 	program = tea.NewProgram(main)
-	if err := program.Start(); err != nil {
+	if _, err := program.Run(); err != nil {
 		print("Error running program: %v", err)
 		os.Exit(1)
 	}

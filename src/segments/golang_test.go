@@ -3,11 +3,12 @@ package segments
 import (
 	"errors"
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
 	"os"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -26,7 +27,7 @@ func getMockedLanguageEnv(params *mockedLanguageParams) (*mock.MockedEnvironment
 	env.On("HasFiles", params.extension).Return(true)
 	env.On("Pwd").Return("/usr/home/project")
 	env.On("Home").Return("/usr/home")
-	env.On("TemplateCache").Return(&environment.TemplateCache{
+	env.On("TemplateCache").Return(&platform.TemplateCache{
 		Env: make(map[string]string),
 	})
 	props := properties.Map{
@@ -46,14 +47,14 @@ func TestGolang(t *testing.T) {
 	}{
 		{Case: "Go 1.15", ExpectedString: "1.15.8", Version: "go version go1.15.8 darwin/amd64"},
 		{Case: "Go 1.16", ExpectedString: "1.16", Version: "go version go1.16 darwin/amd64"},
-		{Case: "go.mod 1.18", ParseModFile: true, HasModFileInParentDir: true, ExpectedString: "1.18"},
+		{Case: "go.mod 1.20", ParseModFile: true, HasModFileInParentDir: true, ExpectedString: "1.20"},
 		{Case: "no go.mod file fallback", ParseModFile: true, ExpectedString: "1.16", Version: "go version go1.16 darwin/amd64"},
 		{
 			Case:                  "invalid go.mod file fallback",
 			ParseModFile:          true,
 			HasModFileInParentDir: true,
 			InvalidModfile:        true,
-			ExpectedString:        "../go.mod:1: unknown directive: invalid",
+			ExpectedString:        "1.16",
 			Version:               "go version go1.16 darwin/amd64",
 		},
 	}
@@ -67,7 +68,7 @@ func TestGolang(t *testing.T) {
 		env, props := getMockedLanguageEnv(params)
 		if tc.ParseModFile {
 			props[ParseModFile] = tc.ParseModFile
-			fileInfo := &environment.FileInfo{
+			fileInfo := &platform.FileInfo{
 				Path:         "../go.mod",
 				ParentFolder: "./",
 				IsDir:        false,

@@ -3,10 +3,11 @@ package segments
 import (
 	"errors"
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/mock"
-	"oh-my-posh/properties"
 	"testing"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -63,7 +64,7 @@ func TestHaskell(t *testing.T) {
 			env.On("HasCommand", "ghc").Return(true)
 			env.On("RunCommand", "ghc", []string{"--numeric-version"}).Return(tc.GhcVersion, nil)
 		}
-		fileInfo := &environment.FileInfo{
+		fileInfo := &platform.FileInfo{
 			Path:         "../stack.yaml",
 			ParentFolder: "./",
 			IsDir:        false,
@@ -77,7 +78,7 @@ func TestHaskell(t *testing.T) {
 		env.On("HasFiles", "*.hs").Return(true)
 		env.On("Pwd").Return("/usr/home/project")
 		env.On("Home").Return("/usr/home")
-		env.On("TemplateCache").Return(&environment.TemplateCache{
+		env.On("TemplateCache").Return(&platform.TemplateCache{
 			Env: make(map[string]string),
 		})
 

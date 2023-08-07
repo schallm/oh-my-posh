@@ -2,11 +2,12 @@ package segments
 
 import (
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
-	"oh-my-posh/regex"
 	"strconv"
 	"strings"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/regex"
 )
 
 type PlasticStatus struct {
@@ -37,7 +38,7 @@ type Plastic struct {
 	plasticWorkspaceFolder string // root folder of workspace
 }
 
-func (p *Plastic) Init(props properties.Properties, env environment.Environment) {
+func (p *Plastic) Init(props properties.Properties, env platform.Environment) {
 	p.props = props
 	p.env = env
 }
@@ -60,6 +61,7 @@ func (p *Plastic) Enabled() bool {
 	if !wkdir.IsDir {
 		return false
 	}
+
 	p.plasticWorkspaceFolder = wkdir.ParentFolder
 	displayStatus := p.props.GetBool(FetchStatus, false)
 	p.setSelector()
@@ -77,9 +79,11 @@ func (p *Plastic) setPlasticStatus() {
 	headChangeset := p.getHeadChangeset()
 	p.Behind = headChangeset > currentChangeset
 
+	statusFormats := p.props.GetKeyValueMap(StatusFormats, map[string]string{})
+	p.Status = &PlasticStatus{ScmStatus: ScmStatus{Formats: statusFormats}}
+
 	// parse file state
 	p.MergePending = false
-	p.Status = &PlasticStatus{}
 	p.parseFilesStatus(splittedOutput)
 }
 

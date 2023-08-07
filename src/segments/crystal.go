@@ -1,8 +1,8 @@
 package segments
 
 import (
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Crystal struct {
@@ -13,7 +13,7 @@ func (c *Crystal) Template() string {
 	return languageTemplate
 }
 
-func (c *Crystal) Init(props properties.Properties, env environment.Environment) {
+func (c *Crystal) Init(props properties.Properties, env platform.Environment) {
 	c.language = language{
 		env:        env,
 		props:      props,

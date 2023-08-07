@@ -1,12 +1,10 @@
 run:
-  timeout: 5m
+  timeout: 10m
   allow-parallel-runners: true
 linters:
   disable-all: true
   enable:
     - bodyclose
-    - deadcode
-    - depguard
     - dupl
     - errcheck
     - exhaustive
@@ -28,12 +26,10 @@ linters:
     - rowserrcheck
     - exportloopref
     - staticcheck
-    - structcheck
     - typecheck
     - unconvert
     - unparam
     - unused
-    - varcheck
     - whitespace
     - lll
 linters-settings:

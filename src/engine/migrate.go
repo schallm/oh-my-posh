@@ -2,10 +2,11 @@ package engine
 
 import (
 	"fmt"
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
-	"oh-my-posh/segments"
 	"strings"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments"
 )
 
 const (
@@ -16,14 +17,14 @@ const (
 	segmentTemplate = properties.Property("template")
 )
 
-func (cfg *Config) Migrate(env environment.Environment) {
+func (cfg *Config) Migrate() {
 	for _, block := range cfg.Blocks {
 		for _, segment := range block.Segments {
-			segment.migrate(env, cfg.Version)
+			segment.migrate(cfg.env, cfg.Version)
 		}
 	}
 	for _, segment := range cfg.Tooltips {
-		segment.migrate(env, cfg.Version)
+		segment.migrate(cfg.env, cfg.Version)
 	}
 	if strings.Contains(cfg.ConsoleTitleTemplate, ".Path") {
 		cfg.ConsoleTitleTemplate = strings.ReplaceAll(cfg.ConsoleTitleTemplate, ".Path", ".PWD")
@@ -32,7 +33,7 @@ func (cfg *Config) Migrate(env environment.Environment) {
 	cfg.Version = configVersion
 }
 
-func (segment *Segment) migrate(env environment.Environment, version int) {
+func (segment *Segment) migrate(env platform.Environment, version int) {
 	if version < 1 {
 		segment.migrationOne(env)
 	}
@@ -41,14 +42,14 @@ func (segment *Segment) migrate(env environment.Environment, version int) {
 	}
 }
 
-func (segment *Segment) migrationOne(env environment.Environment) {
+func (segment *Segment) migrationOne(env platform.Environment) {
 	if err := segment.mapSegmentWithWriter(env); err != nil {
 		return
 	}
 	// General properties that need replacement
 	segment.migratePropertyKey("display_version", properties.FetchVersion)
 	delete(segment.Properties, "enable_hyperlink")
-	switch segment.Type { // nolint:exhaustive
+	switch segment.Type { //nolint:exhaustive
 	case TEXT:
 		segment.migratePropertyKey("text", segmentTemplate)
 		segment.migrateTemplate()
@@ -108,7 +109,7 @@ func (segment *Segment) migrationOne(env environment.Environment) {
 	case SESSION:
 		hasTemplate := segment.hasProperty(segmentTemplate)
 		segment.migrateTemplate()
-		segment.migrateIconOverride("ssh_icon", "\uf817 ")
+		segment.migrateIconOverride("ssh_icon", "\ueba9 ")
 		template := segment.Properties.GetString(segmentTemplate, segment.writer.Template())
 		template = strings.ReplaceAll(template, ".ComputerName", ".HostName")
 		if !segment.Properties.GetBool(properties.Property("display_host"), true) {
@@ -134,7 +135,7 @@ func (segment *Segment) migrationOne(env environment.Environment) {
 			segment.migrateColorOverride("version_mismatch_color", "{{ if .Mismatch }}%s{{ end }}", background)
 		}
 	case EXIT:
-		template := segment.Properties.GetString(segmentTemplate, segment.writer.Template())
+		template := segment.Properties.GetString(segmentTemplate, "{{ if gt .Code 0 }}\uf00d {{ .Meaning }}{{ else }}\uf42e{{ end }}")
 		if strings.Contains(template, ".Text") {
 			template = strings.ReplaceAll(template, ".Text", ".Meaning")
 			segment.Properties[segmentTemplate] = template
@@ -161,7 +162,7 @@ func (segment *Segment) migrationOne(env environment.Environment) {
 	delete(segment.Properties, colorBackground)
 }
 
-func (segment *Segment) migrationTwo(env environment.Environment) {
+func (segment *Segment) migrationTwo(env platform.Environment) {
 	if err := segment.mapSegmentWithWriter(env); err != nil {
 		return
 	}

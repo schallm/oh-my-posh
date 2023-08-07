@@ -15,10 +15,10 @@ var promptCmd = &cobra.Command{
 	},
 }
 
-func init() { // nolint:gochecknoinits
+func init() { //nolint:gochecknoinits
 	// legacy support
 	promptCmd.AddCommand(initCmd)
 	promptCmd.AddCommand(debugCmd)
 	promptCmd.AddCommand(printCmd)
-	rootCmd.AddCommand(promptCmd)
+	RootCmd.AddCommand(promptCmd)
 }

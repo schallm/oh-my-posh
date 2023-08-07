@@ -1,7 +1,13 @@
 name: Scoop
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The latest version'
+        required: true
+      release:
+        description: 'The release id'
+        required: true
 
 jobs:
   publish:
@@ -12,18 +18,12 @@ jobs:
         working-directory: ${{ github.workspace }}/packages/scoop
     steps:
     - name: Checkout code 👋
-      uses: actions/checkout@v2
-    - name: Get release ⬇️
-      id: get_release
-      uses: bruceadams/get-release@v1.2.3
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
+      uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9
     - name: Update Template ✍️
       run: |
-        $version = $env:GITHUB_REF.TrimStart("refs/tags/v")
-        ./build.ps1 -Version $version
+        ./build.ps1 -Version ${{ github.event.inputs.version }}
     - name: Upload artifacts 🆙
-      uses: actions/github-script@v5
+      uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410
       with:
         github-token: ${{secrets.GITHUB_TOKEN}}
         script: |
@@ -34,13 +34,9 @@ jobs:
           const { repo: { owner, repo }, sha } = context;
           console.log({ owner, repo, sha });
 
-          for (let file of await fs.readdir('./packages/scoop/dist')) {
-            console.log('uploading', file);
-
-            await github.rest.repos.uploadReleaseAsset({
-              owner, repo,
-              release_id: ${{ steps.get_release.outputs.id }},
-              name: file,
-              data: await fs.readFile(`./packages/scoop/dist/${file}`)
-            });
-          }
+          await github.rest.repos.uploadReleaseAsset({
+            owner, repo,
+            release_id: ${{ github.event.inputs.release }},
+            name: 'oh-my-posh.json',
+            data: await fs.readFile('./packages/scoop/dist/oh-my-posh.json')
+          });

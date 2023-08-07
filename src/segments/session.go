@@ -1,13 +1,13 @@
 package segments
 
 import (
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Session struct {
 	props properties.Properties
-	env   environment.Environment
+	env   platform.Environment
 	// text  string
 
 	SSHSession bool
@@ -22,10 +22,10 @@ func (s *Session) Enabled() bool {
 }
 
 func (s *Session) Template() string {
-	return " {{ if .SSHSession }}\uf817 {{ end }}{{ .UserName }}@{{ .HostName }} "
+	return " {{ if .SSHSession }}\ueba9 {{ end }}{{ .UserName }}@{{ .HostName }} "
 }
 
-func (s *Session) Init(props properties.Properties, env environment.Environment) {
+func (s *Session) Init(props properties.Properties, env platform.Environment) {
 	s.props = props
 	s.env = env
 }

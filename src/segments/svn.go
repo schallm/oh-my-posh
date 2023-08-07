@@ -1,9 +1,10 @@
 package segments
 
 import (
-	"oh-my-posh/regex"
 	"strconv"
 	"strings"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/regex"
 )
 
 // SvnStatus represents part of the status of a Svn repository
@@ -13,6 +14,8 @@ type SvnStatus struct {
 
 func (s *SvnStatus) add(code string) {
 	switch code {
+	case "?":
+		s.Untracked++
 	case "C":
 		s.Conflicted++
 	case "D":
@@ -21,10 +24,8 @@ func (s *SvnStatus) add(code string) {
 		s.Added++
 	case "M":
 		s.Modified++
-	case "R":
+	case "R", "!":
 		s.Moved++
-	default:
-		s.Unmerged++
 	}
 }
 
@@ -52,47 +53,42 @@ func (s *Svn) Enabled() bool {
 	if !s.shouldDisplay() {
 		return false
 	}
-	displayStatus := s.props.GetBool(FetchStatus, false)
-	if displayStatus {
-		s.setSvnStatus()
-	} else {
-		s.Working = &SvnStatus{}
-	}
+
+	s.setSvnStatus()
+
 	return true
 }
 
 func (s *Svn) shouldDisplay() bool {
-	// when in wsl/wsl2 and in a windows shared folder
-	// we must use Svn.exe and convert paths accordingly
-	// for worktrees, stashes, and path to work
-	s.IsWslSharedPath = s.env.InWSLSharedDrive()
-	if !s.env.HasCommand(s.getCommand(SVNCOMMAND)) {
+	if !s.hasCommand(SVNCOMMAND) {
 		return false
 	}
+
 	Svndir, err := s.env.HasParentFilePath(".svn")
 	if err != nil {
 		return false
 	}
+
 	if s.shouldIgnoreRootRepository(Svndir.ParentFolder) {
 		return false
 	}
 
 	if Svndir.IsDir {
-		s.workingFolder = Svndir.Path
-		s.rootFolder = Svndir.Path
-		// convert the worktree file path to a windows one when in wsl 2 shared folder
-		s.realFolder = strings.TrimSuffix(s.convertToWindowsPath(Svndir.Path), ".svn")
+		s.workingDir = Svndir.Path
+		s.rootDir = Svndir.Path
+		// convert the worktree file path to a windows one when in a WSL shared folder
+		s.realDir = strings.TrimSuffix(s.convertToWindowsPath(Svndir.Path), "/.svn")
 		return true
 	}
+
 	// handle worktree
-	s.rootFolder = Svndir.Path
+	s.rootDir = Svndir.Path
 	dirPointer := strings.Trim(s.env.FileContent(Svndir.Path), " \r\n")
 	matches := regex.FindNamedRegexMatch(`^Svndir: (?P<dir>.*)$`, dirPointer)
 	if matches != nil && matches["dir"] != "" {
-		// if we open a worktree file in a shared wsl2 folder, we have to convert it back
+		// if we open a worktree file in a WSL shared folder, we have to convert it back
 		// to the mounted path
-		s.workingFolder = s.convertToLinuxPath(matches["dir"])
-		return false
+		s.workingDir = s.convertToLinuxPath(matches["dir"])
 	}
 	return false
 }
@@ -105,7 +101,14 @@ func (s *Svn) setSvnStatus() {
 		s.Branch = branch[2:]
 	}
 
-	s.Working = &SvnStatus{}
+	statusFormats := s.props.GetKeyValueMap(StatusFormats, map[string]string{})
+	s.Working = &SvnStatus{ScmStatus: ScmStatus{Formats: statusFormats}}
+
+	displayStatus := s.props.GetBool(FetchStatus, false)
+	if !displayStatus {
+		return
+	}
+
 	changes := s.getSvnCommandOutput("status")
 	if len(changes) == 0 {
 		return
@@ -121,8 +124,8 @@ func (s *Svn) setSvnStatus() {
 }
 
 func (s *Svn) getSvnCommandOutput(command string, args ...string) string {
-	args = append([]string{command, s.realFolder}, args...)
-	val, err := s.env.RunCommand(s.getCommand(SVNCOMMAND), args...)
+	args = append([]string{command, s.realDir}, args...)
+	val, err := s.env.RunCommand(s.command, args...)
 	if err != nil {
 		return ""
 	}

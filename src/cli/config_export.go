@@ -2,10 +2,11 @@ package cli
 
 import (
 	"fmt"
-	"oh-my-posh/engine"
-	"oh-my-posh/environment"
 	"path/filepath"
 	"strings"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/engine"
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
 
 	"github.com/spf13/cobra"
 )
@@ -30,17 +31,11 @@ Exports the ~/myconfig.omp.json config file and prints the result to stdout.
 
 > oh-my-posh config export --config ~/myconfig.omp.json --format toml
 
-Exports the ~/myconfig.omp.json config file to toml and prints the result to stdout.
-
-> oh-my-posh config export --config ~/myconfig.omp.json --format toml --write
-
-Exports the ~/myconfig.omp.json config file to toml and writes the result to your config file.
-A backup of the current config can be found at ~/myconfig.omp.json.bak.`,
+Exports the ~/myconfig.omp.json config file to toml and prints the result to stdout.`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		env := &environment.ShellEnvironment{
-			Version: cliVersion,
-			CmdFlags: &environment.Flags{
+		env := &platform.Shell{
+			CmdFlags: &platform.Flags{
 				Config: config,
 			},
 		}
@@ -60,7 +55,7 @@ A backup of the current config can be found at ~/myconfig.omp.json.bak.`,
 	},
 }
 
-func cleanOutputPath(path string, env environment.Environment) string {
+func cleanOutputPath(path string, env platform.Environment) string {
 	if strings.HasPrefix(path, "~") {
 		path = strings.TrimPrefix(path, "~")
 		path = filepath.Join(env.Home(), path)
@@ -73,7 +68,7 @@ func cleanOutputPath(path string, env environment.Environment) string {
 	return filepath.Clean(path)
 }
 
-func init() { // nolint:gochecknoinits
+func init() { //nolint:gochecknoinits
 	exportCmd.Flags().StringVarP(&format, "format", "f", "json", "config format to migrate to")
 	exportCmd.Flags().StringVarP(&output, "output", "o", "", "config file to export to")
 	configCmd.AddCommand(exportCmd)

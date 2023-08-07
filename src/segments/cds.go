@@ -2,8 +2,9 @@ package segments
 
 import (
 	"encoding/json"
-	"oh-my-posh/environment"
-	"oh-my-posh/properties"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/platform"
+	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 )
 
 type Cds struct {
@@ -15,7 +16,7 @@ func (c *Cds) Template() string {
 	return languageTemplate
 }
 
-func (c *Cds) Init(props properties.Properties, env environment.Environment) {
+func (c *Cds) Init(props properties.Properties, env platform.Environment) {
 	c.language = language{
 		env:        env,
 		props:      props,
